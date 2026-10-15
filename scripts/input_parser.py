@@ -33,8 +33,10 @@ class Patent:
         return f"{self.country} {n}{suffix}.pdf"
 
 
+COUNTRIES = 'KR JP US EP WO CN DE GB FR CA AU TW AT BE BR CH CZ DK ES FI GR HK HU IE IL IN IT MX NL NO NZ PL PT RU SE SG SK TR UA ZA EA AP AR BG CL CO ID MY PH TH VN'.split()
+COUNTRY_PATTERN = '|'.join(COUNTRIES)
 PATTERN = re.compile(
-    r"(?<![A-Z0-9])(?P<cc>KR|JP|US|EP|WO|CN|DE|GB|FR|CA|AU|TW)\s*"
+    rf"(?<![A-Z0-9])(?P<cc>{COUNTRY_PATTERN})\s*"
     r"(?P<num>\d(?:[\d /-]*\d)?)(?:\s*\(?\s*(?P<kind>[ABC UYSH][0-9]?)\s*\)?)?(?![A-Z0-9])".replace("[ABC UYSH]", "[ABCUYSH]"),
     re.I,
 )
@@ -50,7 +52,9 @@ def clean(text):
 
 def extract(text, role="publication", country=None):
     value = clean(text)
-    if country and not re.search(r"\b(?:KR|JP|US|EP|WO|CN|DE|GB|FR|CA|AU|TW)\s*\d", value):
+    if country and country.upper() not in COUNTRIES:
+        raise ValueError('지원하지 않는 국가/기관 코드: ' + country)
+    if country and not re.search(rf"\b(?:{COUNTRY_PATTERN})\s*\d", value):
         value = country.upper() + " " + value
     found = []
     for m in PATTERN.finditer(value):

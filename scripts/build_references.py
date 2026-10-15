@@ -104,6 +104,8 @@ def run(args):
         raise ValueError("retries: 1~5, timeout/human-timeout: 양수, delay: 0 이상")
     args.out.mkdir(parents=True, exist_ok=True)
     sheets, layouts, rows = input_rows(args)
+    if not rows:
+        raise ValueError('처리할 특허번호가 없습니다.')
     manifest = load_json(args.manifest)
     args.selectors = load_json(args.selectors)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")

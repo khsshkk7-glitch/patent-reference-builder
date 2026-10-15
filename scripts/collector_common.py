@@ -78,6 +78,8 @@ def from_manifest(requested, entry, base):
     """Explicit reviewed resume path for inaccessible/changed sites and scanned PDFs."""
     from .input_parser import one
     publication = one(entry["publication"])
+    if not publication.kind:
+        raise CollectionError('검토 manifest의 publication에는 확정된 문헌 종류 코드가 필요합니다.')
     if requested.role == "application":
         if entry.get("application") != requested.key:
             raise CollectionError("출원번호-공보번호 매핑 증거가 없습니다.")

@@ -50,6 +50,11 @@ class Parsing(unittest.TestCase):
         self.assertEqual([r.index for r in rows], [2,3,4])
         self.assertEqual(rows[-1].value,'bad')
 
+    def test_empty_batch_is_not_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args=parser().parse_args(['--text',' , ','--out',tmp])
+            with self.assertRaises(ValueError): run(args)
+
 
 class Files(unittest.TestCase):
     def setUp(self):
