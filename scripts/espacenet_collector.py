@@ -1,0 +1,92 @@
+"""Espacenet classic UI adapter. Fail closed if current UI differs."""
+import re
+from urllib.parse import urljoin, urlparse, parse_qs
+from .input_parser import extract, resolve
+from .collector_common import Collected, print_biblio
+from .pdf_merger import inspect_pdf
+from .browser_session import CollectionError, HumanRequired, navigate, checkpoint
+
+
+START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
+
+
+def collect(page, patent, work, args):
+    navigate(page, START, args.retries)
+    field = "#apEditBox" if patent.role == "application" else "#pnEditBox"
+    page.locator(field).fill(patent.key)
+    page.get_by_role("button", name="Search", exact=True).click()
+    page.locator('a[id^="publicationId"]').first.wait_for(state="visible")
+    links = page.locator('a[id^="publicationId"]')
+    if links.count() != 1:
+        raise CollectionError("검색 결과가 여러 개입니다. 공보번호/종류 코드를 지정하세요.")
+    links.first.click()
+    page.locator("#pagebody h1").wait_for(state="visible")
+    title = page.locator("#pagebody h1").inner_text()
+    if patent.role == "application":
+        # Do not silently select a publication from an application result/family.
+        raise CollectionError("출원번호 검색 완료. 공보 매핑을 검토하고 manifest의 application/mapping_verified로 재개하세요.")
+    publication = resolve(patent, extract(title))
+    page.locator("#pagebody .application.article").wait_for(state="visible")
+    if not patent.kind:
+        same_number = extract(title)
+        for text in page.locator('#lessPublishedAs a, #morePublishedAs a').all_inner_texts():
+            same_number.extend(extract(text))
+        publication = resolve(patent, same_number)
+    article = page.locator("#pagebody .application.article")
+    heading = article.locator("h3").inner_text()
+    abstract_ids = extract(heading)
+    if not abstract_ids or resolve(publication, abstract_ids) != publication:
+        raise CollectionError("다른 패밀리 문헌의 초록입니다. 동일 문헌 초록을 확인하세요.")
+    # Source text excludes translation controls and the heading.
+    abstract = article.evaluate("""el => {
+      const c=el.cloneNode(true);
+      c.querySelectorAll('h3,script,style,.noPrint,#languageSelectorContainer').forEach(e=>e.remove());
+      return c.textContent.trim();
+    }""")
+    if not page.locator("#inventorsRow").inner_text().strip() or not page.locator("#applicantsRow").inner_text().strip():
+        raise CollectionError("발명자/출원인 서지정보 누락")
+    biblio_url = page.url
+    biblio = work / "biblio.pdf"
+    print_biblio(page, "#pagebody", abstract, biblio)
+    original_link = page.get_by_role("link", name="Original document", exact=True)
+    original_link.wait_for(state="visible")
+    original_link.click()
+    page.locator("#pagebody h1").wait_for(state="visible")
+    resolve(publication, extract(page.locator("#pagebody h1").inner_text()))
+    original_url = page.url
+    # Capture source pagination before download. Never infer full length from downloaded length.
+    page.locator('#navigationSelector option').first.wait_for(state="attached")
+    body = page.locator('#navigationSelector').text_content()
+    counts = re.findall(r"(?:\bof\s+|/\s*)(\d+)\b|\b(\d+)\s+pages\b", body, re.I)
+    numbers = {int(a or b) for a, b in counts}
+    if len(numbers) != 1:
+        raise CollectionError("전문 전체 페이지 수를 확인하지 못했습니다. manifest로 검토 후 재개하세요.")
+    count = numbers.pop()
+    download = page.get_by_role("link", name=re.compile(r"^Download(?: full document| document)?$", re.I))
+    if download.count() != 1:
+        raise CollectionError("전체 문서 다운로드 버튼을 확인하지 못했습니다.")
+    target = work / "original.pdf"
+    href = urljoin(page.url, download.get_attribute('href') or '')
+    params = parse_qs(urlparse(href).query)
+    # The observed official Download link requests trueFull, not plainPage/covers.
+    if params.get('flavour') != ['trueFull'] or params.get('CC') != [publication.country] or params.get('NR') != [publication.number + publication.kind] or params.get('KC') != [publication.kind]:
+        raise CollectionError('전체 다운로드 URL의 문헌번호/종별 연결을 확인하지 못했습니다.')
+    from .browser_session import assert_official_url
+    assert_official_url(href, 'Espacenet')
+    response = page.context.request.get(href, timeout=args.timeout * 1000)
+    if response.status in (401,403,429):
+        raise HumanRequired(f'전체 다운로드 HTTP {response.status}: 사용자 확인 필요')
+    if not response.ok:
+        raise CollectionError(f'전체 다운로드 HTTP {response.status}')
+    target.write_bytes(response.body())
+    r = inspect_pdf(target)
+    if len(r.pages) != count:
+        raise CollectionError("전체 페이지 수와 다운로드 PDF 불일치")
+    first = r.pages[0].extract_text() or ""
+    # A scanned facsimile has no text. The checked official full-download URL
+    # plus selected document heading and pagination still bind it to this record.
+    ids = [p for p in extract(first) if p.country == publication.country and p.number == publication.number]
+    if ids:
+        resolve(publication, ids)
+    return Collected(publication, biblio, target, count, "Espacenet", biblio_url, original_url,
+        "서지·초록 번호 및 공식 전체 다운로드 URL 종별 일치; 사이트 전체 페이지 수 대조. 최종 시각 검수 필요")

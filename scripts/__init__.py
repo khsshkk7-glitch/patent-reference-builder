@@ -1,0 +1,1 @@
+"""Patent reference builder."""

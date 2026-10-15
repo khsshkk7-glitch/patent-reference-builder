@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.browser-profile/
+output/
+work/
+*.pdf
+*.xlsx
+*.xls
+*.zip
+*.log
+storage-state*.json
+.env

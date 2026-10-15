@@ -1,0 +1,4 @@
+interface:
+  display_name: "특허 참증 PDF 제작"
+  short_description: "특허번호 목록에서 영문 서지·초록과 공식 공보 전문을 병합"
+  default_prompt: "$patent-reference-builder로 첨부한 특허번호 목록의 참증 PDF와 처리결과 엑셀을 만들어줘."
