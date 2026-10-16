@@ -50,6 +50,8 @@ def print_biblio(page, container, abstract, path, hide=(), scale=1):
       [data-reference-print-root], [data-reference-print-root] * {max-width:100%!important; overflow:visible!important;}
       [data-reference-print-root] {margin:0!important; padding:0!important; width:100%!important; float:none!important; position:static!important; font:10pt Arial,sans-serif;}
       table {width:100%!important; table-layout:auto!important;} th,td{overflow-wrap:anywhere;}
+      #pagebody table th {width:32mm!important;min-width:32mm!important;word-break:normal!important;overflow-wrap:normal!important;vertical-align:top;}
+      #pagebody .hidden, #pagebody a[onclick*="secondary"] {display:none!important;}
       img {max-width:100%!important; height:auto!important;} a{color:#111!important;text-decoration:none!important;}
     }"""
     if hide:
