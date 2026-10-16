@@ -57,6 +57,21 @@ class Parsing(unittest.TestCase):
 
 
 class Files(unittest.TestCase):
+    def test_human_wait_stops_further_collection_and_reports_unattempted_rows(self):
+        from contextlib import nullcontext
+        from unittest.mock import patch
+        from scripts.browser_session import HumanWaitTimeout
+        with tempfile.TemporaryDirectory() as tmp:
+            args=parser().parse_args(['--text','JP2004121879A,CN113332661A','--out',tmp])
+            with patch('scripts.build_references.browser_session',return_value=nullcontext(object())), \
+                 patch('scripts.build_references.collect',side_effect=HumanWaitTimeout('인증 반복')) as collect:
+                self.assertEqual(run(args),1)
+            self.assertEqual(collect.call_count,1)
+            results=json.loads(next(Path(tmp).glob('*.json')).read_text(encoding='utf-8'))
+            self.assertEqual(results[0]['note'],'인증 반복')
+            self.assertIn('후속 온라인 수집 미실행',results[1]['note'])
+            self.assertNotIn('브라우저 시작 실패',results[1]['note'])
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)

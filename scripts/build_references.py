@@ -144,7 +144,7 @@ def run(args):
         context_entered = True
     except Exception as exc:
         page = None
-        browser_error = str(exc)
+        browser_error = "브라우저 시작 실패: " + str(exc)
     try:
         for index, (row, patent, error) in enumerate(parsed, 1):
             result = {"sheet": row.sheet, "row": row.index, "input": row.value, "status": "실패"}
@@ -162,7 +162,7 @@ def run(args):
                         parts = from_manifest(patent, manifest[patent.key], args.manifest.parent)
                     else:
                         if browser_error:
-                            raise CollectionError("브라우저 시작 실패: " + browser_error)
+                            raise CollectionError(browser_error)
                         parts = collect(page, patent, work, args)
                         time.sleep(args.delay)
                     filename = parts.publication.filename
@@ -186,7 +186,7 @@ def run(args):
                     result.update(success)
             except HumanWaitTimeout as exc:
                 result['note'] = str(exc)
-                browser_error = str(exc)
+                browser_error = "사용자 확인 중단으로 후속 온라인 수집 미실행: " + str(exc)
             except Exception as exc:
                 result["note"] = str(exc)
             results.append(result)
