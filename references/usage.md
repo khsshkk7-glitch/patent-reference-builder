@@ -27,7 +27,9 @@ python scripts/build_references.py --input "list.csv" --out output/csv --profile
 온라인 Espacenet 수집은 위 Chrome 사용자 확인 명령을 우선 사용한다.
 보안문자가 뜨면 사용자가 열린 Chrome에서 직접 입력하고 Submit을 누르면 된다. 다운로드 단계에서는 터미널 Enter 없이
 자동으로 다음 단계로 진행한다. 단건 JP 샘플의 전체 흐름을 검증했으며, 다건은 문헌마다 사용자 입력이 필요할 수 있다.
-완전 무인 실행은 운영 목표에서 제외했다. KIPRIS 국내 전문 수집은 이슈 #2가 해결될 때까지 별도 검토가 필요하다.
+완전 무인 실행은 운영 목표에서 제외했다. KIPRIS 국내 전문 연결이 시간 초과되면
+KPA 인쇄본 + 같은 공보의 Espacenet 원문으로 자동 복구하며, Espacenet 보안문자는 사용자가 입력한다.
+복합 출처는 결과에 표시한다. KIPRIS 자체 오류와 복구 경로 검증 상태는 이슈 #2 및 검증 기록을 따른다.
 
 `.xlsx`: openpyxl, `.xls`: pandas + xlrd, CSV: UTF-8 BOM/CP949와 쉼표/탭/세미콜론을 지원한다.
 첫 30행에서 헤더를 찾고, 헤더가 없으면 최초 유효 특허번호가 있는 컬럼을 찾는다.

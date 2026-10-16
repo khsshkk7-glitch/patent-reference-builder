@@ -10,7 +10,7 @@ from .browser_session import CollectionError, HumanRequired, HumanWaitTimeout, n
 START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
 
 
-def collect(page, patent, work, args):
+def open_record(page, patent, args):
     navigate(page, START, args.retries)
     page.wait_for_load_state("load")
     field = "#apEditBox" if patent.role == "application" else "#pnEditBox"
@@ -27,12 +27,17 @@ def collect(page, patent, work, args):
         # Do not silently select a publication from an application result/family.
         raise CollectionError("출원번호 검색 완료. 공보 매핑을 검토하고 manifest의 application/mapping_verified로 재개하세요.")
     publication = resolve(patent, extract(title))
-    page.locator("#pagebody .application.article").wait_for(state="visible")
     if not patent.kind:
         same_number = extract(title)
         for text in page.locator('#lessPublishedAs a, #morePublishedAs a').all_inner_texts():
             same_number.extend(extract(text))
         publication = resolve(patent, same_number)
+    return publication
+
+
+def collect(page, patent, work, args):
+    publication = open_record(page, patent, args)
+    page.locator("#pagebody .application.article").wait_for(state="visible")
     article = page.locator("#pagebody .application.article")
     heading = article.locator("h3").inner_text()
     abstract_ids = extract(heading)
@@ -49,6 +54,19 @@ def collect(page, patent, work, args):
     biblio_url = page.url
     biblio = work / "biblio.pdf"
     print_biblio(page, "#pagebody", abstract, biblio)
+    target, count, original_url = download_original(page, publication, work, args)
+    return Collected(publication, biblio, target, count, "Espacenet", biblio_url, original_url,
+        "서지·초록 번호 및 공식 전체 다운로드 URL 종별 일치; 사이트 전체 페이지 수 대조. 최종 시각 검수 필요")
+
+
+def collect_original(page, patent, work, args):
+    """Exact official publication only; no English abstract requirement."""
+    publication = open_record(page, patent, args)
+    target, count, url = download_original(page, publication, work, args)
+    return publication, target, count, url
+
+
+def download_original(page, publication, work, args):
     original_link = page.get_by_role("link", name="Original document", exact=True)
     original_link.wait_for(state="visible")
     original_link.click()
@@ -113,5 +131,4 @@ def collect(page, patent, work, args):
     ids = [p for p in extract(first) if p.country == publication.country and p.number == publication.number]
     if ids:
         resolve(publication, ids)
-    return Collected(publication, biblio, target, count, "Espacenet", biblio_url, original_url,
-        "서지·초록 번호 및 공식 전체 다운로드 URL 종별 일치; 사이트 전체 페이지 수 대조. 최종 시각 검수 필요")
+    return target, count, original_url

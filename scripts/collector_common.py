@@ -92,12 +92,14 @@ def from_manifest(requested, entry, base):
     else:
         resolve(requested, [publication])
     source = entry["source"]
-    if source not in ("Espacenet", "KIPRIS"):
+    if source not in ("Espacenet", "KIPRIS", "KIPRIS + Espacenet"):
         raise CollectionError("지원 출처는 Espacenet/KIPRIS입니다.")
-    if source == "KIPRIS" and publication.country != "KR":
+    if source in ("KIPRIS", "KIPRIS + Espacenet") and publication.country != "KR":
         raise CollectionError("KIPRIS 보조 수집은 KR만 지원합니다.")
-    for key in ("biblio_url", "original_url"):
-        assert_official_url(entry[key], source)
+    biblio_source = "KIPRIS" if source == "KIPRIS + Espacenet" else source
+    original_source = "Espacenet" if source == "KIPRIS + Espacenet" else source
+    assert_official_url(entry["biblio_url"], biblio_source)
+    assert_official_url(entry["original_url"], original_source)
     for key in ("identity_verified", "english_abstract_verified", "full_document_verified", "layout_verified"):
         if entry.get(key) is not True:
             raise CollectionError("검토 기록 누락: " + key)

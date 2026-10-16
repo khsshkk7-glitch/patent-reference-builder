@@ -120,12 +120,35 @@ def collect(page, patent, work, args):
         print_biblio(print_page, 'body', abstract, biblio, scale=0.9)
     finally:
         print_page.close()
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    try:
+        return collect_domestic(page, publication, app_number[0], number, biblio, biblio_url, work, args)
+    except BrowserTimeout as exc:
+        # Preserve the source evidence before leaving the failed KIPRIS pane.
+        (work / 'kipris-domestic-error.txt').write_text(str(exc), encoding='utf-8')
+        (work / 'kipris-domestic-failure.html').write_text(page.content(), encoding='utf-8')
+        page.screenshot(path=str(work / 'kipris-domestic-failure.png'))
+        return recover_original(page, publication, biblio, biblio_url, work, args)
+
+
+def recover_original(page, publication, biblio, biblio_url, work, args):
+    from .espacenet_collector import collect_original
+    fallback = work / 'espacenet-original'
+    fallback.mkdir(exist_ok=True)
+    print('KIPRIS 국내 전문 연결 지연/실패: KPA 인쇄본을 유지하고 동일 공보의 Espacenet 원문으로 복구합니다.', flush=True)
+    resolved, original, count, url = collect_original(page, publication, fallback, args)
+    resolve(publication, [resolved])
+    return Collected(publication, biblio, original, count, 'KIPRIS + Espacenet', biblio_url, url,
+        'KPA 공보번호·종별과 Espacenet 공식 원문 공보번호·종별 일치; 전문 뷰어 총 페이지 수 대조; KIPRIS 국내 연결 실패 후 복구. 최종 시각 검수 필요')
+
+
+def collect_domestic(page, publication, application_number, number, biblio, biblio_url, work, args):
     # Select domestic record by the application number obtained from this KPA.
     page.locator('#patentTabPannel').get_by_role('link', name=re.compile(r'^국내')).click()
     articles = page.locator('#resultSection article[id="divViewSel"]')
     articles.first.wait_for(state='visible')
     page.wait_for_load_state('networkidle')
-    match = articles.filter(has_text=app_number[0])
+    match = articles.filter(has_text=application_number)
     if match.count() != 1:
         raise CollectionError('KPA에 대응하는 국내 출원기록이 단일하지 않습니다.')
     match.get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
