@@ -15,9 +15,16 @@ description: 특허번호를 채팅 또는 엑셀·CSV로 받아 Espacenet/KIPRI
 [실행 방법](references/usage.md)을 읽는다. Python 3.10 이상과 requirements.txt가 필요하다.
 
 ```sh
-python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --out output/references --headed
-python scripts/build_references.py --input "/absolute/path/list.xlsx" --out output/batch --zip --headed
+python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --out output/references --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --input "/absolute/path/list.xlsx" --out output/batch --zip --headed --channel chrome --interactive --human-timeout 300
 ```
+
+온라인 수집은 **Chrome 창을 열고 보안문자만 사용자가 입력하는 방식**을 기본 운영 흐름으로 사용한다.
+Espacenet 다운로드 때 보안문자가 나오면 사용자가 숫자를 입력하고 Submit을 누르도록 안내한다.
+같은 브라우저에서 파일 수신 후 다운로드·검증·병합을 자동으로 이어가므로 이 단계에서는 터미널 Enter가 필요 없다.
+문헌마다 보안문자가 다시 나올 수 있다. 사용자와 합의한 운영 방식이므로 완전 무인화를 위해 추가 우회·조사를 진행하지 않는다.
+JP 샘플에서 이 흐름으로 1+9=10페이지 결과를 검증했다. KIPRIS 국내 전문 수집 문제는 별도 미해결이며
+KR 입력도 동일하게 검증됐다고 설명하지 않는다.
 
 1. 사용자가 채팅으로 준 번호 또는 실제 첨부 경로를 `--text`/`--input`으로 전달한다.
    엑셀·CSV의 시트와 번호 컬럼은 자동 탐지한다. 불명확할 때만 `--column`, `--sheet`, `--country`를 지정한다.
@@ -48,7 +55,8 @@ python scripts/build_references.py --input "/absolute/path/list.xlsx" --out outp
 
 403/429, CAPTCHA, 사이트 UI 변경, 스캔 표지 검증 문제는 [브라우저 복구 및 검토 manifest](references/browser-recovery.md)를 읽는다.
 Playwright 전용 프로필 또는 사용자가 준비한 로컬 CDP 세션을 사용할 수 있다. CAPTCHA는 사용자에게 맡긴다.
-재시도는 기본 3회, 인간 확인 뒤 1회 추가이며 무한 재시도·차단 회피를 하지 않는다.
+탐색 재시도는 기본 3회다. 일반 접근 제한은 인간 확인 뒤 1회 추가할 수 있으나,
+Espacenet 다운로드의 사용자 입력 대기 시간이 끝나면 재검색하지 않고 실패를 기록한다.
 
 자동 수집이 막혀도 사용 가능한 브라우저 도구로 **동일 공식 사이트**에서 자료를 수집하고,
 공보번호·종별·영문초록·도면·전체 페이지·인쇄 상태를 직접 확인한 후 manifest로 이어서 병합한다.

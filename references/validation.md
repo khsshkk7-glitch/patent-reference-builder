@@ -4,6 +4,11 @@
 
 ## 2026-10-16 — Issue #1 추가 조사
 
+운영 결정: 사용자와 Chrome 사용자 확인 방식으로 계속 사용하기로 합의했다.
+화면 없는 실행의 403을 해결하거나 완전 무인화를 추가 추진하지 않는다.
+Espacenet 수집의 현재 지원 흐름은 보안문자 직접 입력 후 자동 다운로드·병합이다.
+KIPRIS 이슈 #2는 별도 미해결 상태로 남는다.
+
 - 제한된 실행 환경: `net::ERR_NETWORK_ACCESS_DENIED`. 기존에는 오류 타입만 남아 원인이 숨겨졌으므로 네트워크 오류 코드를 보존하도록 수정.
 - 네트워크 허용 환경에서 화면 없는 Chromium 및 Chrome: HTTP 403 재현. 응답 Server 헤더는 cloudflare지만 이것만으로 탐지 사유는 확정할 수 없음.
 - 일반 Chrome 창 모드: 페이지 로딩 완료 대기 추가 후 검색 → 동일 JP 문헌 영문 서지/초록 PDF 생성 → 원문 9페이지 화면까지 성공.
@@ -60,6 +65,6 @@ python -m unittest discover -s tests -v
 실사이트 검증은 명시적으로 실행한다. CI에서는 외부 특허 사이트를 호출하지 않는다.
 
 ```sh
-python scripts/build_references.py --text "JP 2006-198019 A" --out output/live-jp --headed
+python scripts/build_references.py --text "JP 2006-198019 A" --out output/live-jp --headed --channel chrome --interactive --human-timeout 300
 python scripts/build_references.py --text "KR 10-2020-0137353" --source kipris --out output/live-kr --headed
 ```

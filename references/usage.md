@@ -18,11 +18,16 @@ python -m venv .venv
 
 ```sh
 python scripts/build_references.py --text "KR1020200137353A, JP 2006-198019 A" --out output/check --dry-run
-python scripts/build_references.py --text "特開2006-198019" --out output/jp --headed --interactive
-python scripts/build_references.py --input "list.xlsx" --out output/batch --zip
-python scripts/build_references.py --input "list.xls" --column "공개번호" --country KR --out output/batch-kr --source kipris
-python scripts/build_references.py --input "list.csv" --out output/csv --profile "/absolute/path/reference-profile" --headed
+python scripts/build_references.py --text "特開2006-198019" --out output/jp --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --input "list.xlsx" --out output/batch --zip --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --input "list.xls" --column "공개번호" --country KR --out output/batch-kr --source kipris --headed --channel chrome --interactive
+python scripts/build_references.py --input "list.csv" --out output/csv --profile "/absolute/path/reference-profile" --headed --channel chrome --interactive
 ```
+
+온라인 Espacenet 수집은 위 Chrome 사용자 확인 명령을 우선 사용한다.
+보안문자가 뜨면 사용자가 열린 Chrome에서 직접 입력하고 Submit을 누르면 된다. 다운로드 단계에서는 터미널 Enter 없이
+자동으로 다음 단계로 진행한다. 단건 JP 샘플의 전체 흐름을 검증했으며, 다건은 문헌마다 사용자 입력이 필요할 수 있다.
+완전 무인 실행은 운영 목표에서 제외했다. KIPRIS 국내 전문 수집은 이슈 #2가 해결될 때까지 별도 검토가 필요하다.
 
 `.xlsx`: openpyxl, `.xls`: pandas + xlrd, CSV: UTF-8 BOM/CP949와 쉼표/탭/세미콜론을 지원한다.
 첫 30행에서 헤더를 찾고, 헤더가 없으면 최초 유효 특허번호가 있는 컬럼을 찾는다.
@@ -46,7 +51,8 @@ python scripts/build_references.py --input "list.csv" --out output/csv --profile
 - `--profile PATH`: 참증 작업 전용 프로필. 평소 사용 중인 기본 프로필을 지정하지 않는다.
 - `--cdp http://127.0.0.1:9222`: 사용자가 디버깅 모드로 준비한 브라우저에 연결한다.
   기존 탭을 닫거나 브라우저 프로세스를 종료하지 않는다. 로컬 주소만 허용한다.
-- `--interactive --human-timeout 300`: CAPTCHA 등의 사용자 조치 후 Enter로 재시도. 무인 실행에서는 끈다.
+- `--interactive --human-timeout 300`: Espacenet 공식 다운로드에서는 사용자 입력 후 파일 수신을 최대 300초 기다리고 자동 진행한다.
+  다른 접근 제한의 복구 안내에서 Enter를 요청하는 경우에만 터미널 Enter로 재시도한다.
 - `--timeout 40 --retries 3 --delay 2`: 개별 대기 초, 탐색 최대 시도 횟수, 문헌 간 간격.
 
 수집기는 확인한 UI에 대해 동작한다. 사이트 변경이나 접근 제한 때 복구 문서를 따라 검토된 자료로 재개한다.
