@@ -22,7 +22,7 @@ python scripts/build_references.py --text "JP 2006-198019 A" --out output/jp --h
 [Espacenet 이슈 #1](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/1)은 사용자 확인 방식으로 운영 범위를 확정했습니다.
 [KIPRIS 국내 전문 수집 이슈 #2](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/2)의 사이트 상세 오류는 미해결입니다.
 국내 상세 연결이 시간 초과되면 KPA 영문 인쇄본을 보존하고 동일 공개번호·종별의 Espacenet 원문으로 복구하는 경로를 추가했습니다.
-출처는 `KIPRIS + Espacenet`으로 기록합니다. 이 복구 경로의 실사이트 최종 병합은 사용자 보안문자 입력 후 검증이 필요합니다.
+출처는 `KIPRIS + Espacenet`으로 기록합니다. KR20200137353A에서 보안문자 사용자 입력 후 KPA 1페이지 + 원문 19페이지의 최종 20페이지 생성·시각 검수를 완료했습니다.
 접근 불가 문헌은 정상 브라우저 세션 또는 검토된 로컬 PDF manifest로 재개할 수 있습니다.
 
 저장소 루트를 `~/.codex/skills/patent-reference-builder`에 설치하면 스킬로 사용할 수 있습니다.
