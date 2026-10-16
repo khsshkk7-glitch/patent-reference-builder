@@ -15,9 +15,13 @@ description: 특허번호를 채팅 또는 엑셀·CSV로 받아 Espacenet/KIPRI
 [실행 방법](references/usage.md)을 읽는다. Python 3.10 이상과 requirements.txt가 필요하다.
 
 ```sh
-python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --out output/references --headed --channel chrome --interactive --human-timeout 300
-python scripts/build_references.py --input "/absolute/path/list.xlsx" --out output/batch --zip --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --input "/absolute/path/list.xlsx" --zip --headed --channel chrome --interactive --human-timeout 300
 ```
+
+사용자가 다른 저장 위치를 지정하지 않으면 `--out`을 생략하여 OS에 설정된 사용자 다운로드 폴더에 저장한다.
+Windows는 변경·리디렉션된 다운로드 위치도 반영한다. 사용자명이나 저장소 내부 경로를 저장 위치로 고정하지 않는다.
+완료 시 결과 JSON의 `output_path`에 있는 실제 절대 경로로 클릭 가능한 최종 파일 링크를 안내한다.
 
 온라인 수집은 **Chrome 창을 열고 보안문자만 사용자가 입력하는 방식**을 기본 운영 흐름으로 사용한다.
 Espacenet 다운로드 때 보안문자가 나오면 사용자가 숫자를 입력하고 Submit을 누르도록 안내한다.
@@ -51,7 +55,7 @@ KR20200137353A에서도 사용자 보안문자 입력 후 KPA 1페이지 + Espac
   출원번호만으로 공개/등록 중 하나를 임의 선택하지 않는다.
 - 일본 연호 표기 등 파서가 지원하지 않는 표기는 확인된 서력·공보번호로 변환한 뒤 진행한다.
 - 기본 파일명은 `KR 10-2020-0137353.pdf`, `JP 2006-198019 A.pdf`이다. KR A는 샘플처럼 생략하고 등록 종별은 보존한다.
-  기존 파일은 덮어쓰지 않는다. 다시 수집할 때 새 출력 폴더를 사용한다.
+  기존 파일은 덮어쓰지 않는다. 동일 이름이 있으면 `JP 2006-198019 A (2).pdf`처럼 순번을 붙이고 실제 파일명을 보고한다.
 
 ## 접근 차단·화면 변경·재개
 

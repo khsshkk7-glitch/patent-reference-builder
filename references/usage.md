@@ -18,8 +18,8 @@ python -m venv .venv
 
 ```sh
 python scripts/build_references.py --text "KR1020200137353A, JP 2006-198019 A" --out output/check --dry-run
-python scripts/build_references.py --text "特開2006-198019" --out output/jp --headed --channel chrome --interactive --human-timeout 300
-python scripts/build_references.py --input "list.xlsx" --out output/batch --zip --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --text "特開2006-198019" --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --input "list.xlsx" --zip --headed --channel chrome --interactive --human-timeout 300
 python scripts/build_references.py --input "list.xls" --column "공개번호" --country KR --out output/batch-kr --source kipris --headed --channel chrome --interactive
 python scripts/build_references.py --input "list.csv" --out output/csv --profile "/absolute/path/reference-profile" --headed --channel chrome --interactive
 ```
@@ -40,8 +40,15 @@ KPA 인쇄본 + 같은 공보의 Espacenet 원문으로 자동 복구하며, Esp
 한 셀에 여러 문헌이 있으면 임의로 하나만 고르지 않고 실패 처리하므로 한 행에 한 문헌으로 정리한다.
 
 결과 폴더에는 최종 PDF, 타임스탬프가 붙은 결과 XLSX/JSON, 선택적 ZIP이 생긴다.
+`--out`을 생략하면 OS에 설정된 사용자 다운로드 폴더가 기본 저장 위치다. Windows는 Known Folder API로
+변경·리디렉션된 Downloads 위치를 조회한다. Linux는 XDG_DOWNLOAD_DIR 설정, macOS는 ~/Downloads를 사용한다.
+Windows 위치 조회가 실패하면 오류를 알리고 `--out`으로 명시하도록 하며 임의 폴더로 저장하지 않는다.
+다른 위치를 원하면 `--out "/absolute/path/folder"`로 지정한다.
 `work/`에는 원본 조각과 실패 화면이 남는다. ZIP은 이번 실행에서 성공한 PDF와 보고서만 포함한다.
-중복 행은 별도 행으로 보고하지만 같은 PDF를 재사용한다. 기존 최종 PDF는 자동 덮어쓰기하지 않는다.
+중복 행은 별도 행으로 보고하지만 같은 PDF를 재사용한다. 이전 실행의 동일 파일명이 있으면
+`특허번호 (2).pdf`, `(3).pdf` 순서로 새 파일을 만든다. 기존 파일은 보존한다.
+결과 JSON의 `output_path`와 종료 요약의 `files`는 실제 최종 파일의 절대 경로다.
+결과 엑셀은 실제 파일명을 기록하고 해당 PDF를 여는 하이퍼링크를 제공한다.
 
 종료코드: `0` 전건 성공, `1` 일부/전체 건별 실패, `2` 잘못된 실행 옵션·입출력 오류.
 `--dry-run`은 문헌 검색·PDF 생성을 하지 않고 입력 계획을 `input-plan.json`에 저장한다.

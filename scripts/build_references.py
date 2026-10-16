@@ -15,7 +15,8 @@ if __package__ in (None, ""):
 
 from .input_parser import extract, one
 from .excel_reporter import Row, read_table, write_report
-from .pdf_merger import merge, sha256
+from .pdf_merger import merge_unique, sha256
+from .output_paths import output_directory
 from .collector_common import from_manifest
 from .browser_session import browser_session, CollectionError, HumanRequired, HumanWaitTimeout, checkpoint
 from . import espacenet_collector, kipris_collector
@@ -26,7 +27,7 @@ def parser():
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--text", help="번호 1개 또는 줄바꿈/쉼표 구분 번호 목록")
     src.add_argument("--input", type=Path, help=".xlsx / .xls / .csv")
-    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--out", type=Path, help="저장 폴더. 생략 시 사용자 다운로드 폴더")
     p.add_argument("--column")
     p.add_argument("--sheet")
     p.add_argument("--country", help="국가코드 없는 셀에 적용할 명시적 국가")
@@ -105,6 +106,7 @@ def run(args):
         raise ValueError("--interactive는 --headed 또는 --cdp와 함께 사용하세요.")
     if not 1 <= args.retries <= 5 or args.timeout < 1 or args.human_timeout < 1 or args.delay < 0:
         raise ValueError("retries: 1~5, timeout/human-timeout: 양수, delay: 0 이상")
+    args.out = output_directory(args.out)
     args.out.mkdir(parents=True, exist_ok=True)
     sheets, layouts, rows = input_rows(args)
     if not rows:
@@ -169,10 +171,15 @@ def run(args):
                         success = dict(cache[resolved_key])
                         success['note'] += ' | 같은 공보의 입력 표기 변형: 결과 재사용'
                     else:
-                        stats = merge(parts.biblio, parts.original, args.out / filename, parts.original_pages)
+                        output, stats = merge_unique(parts.biblio, parts.original, args.out / filename, parts.original_pages)
+                        filename = output.name
+                        note = parts.source + " | " + parts.verification
+                        if filename != parts.publication.filename:
+                            note += " | 동일 파일명 존재: " + filename + "으로 저장"
                         success = dict(status="성공", filename=filename, **stats,
+                            output_path=str(output),
                             publication=parts.publication.key, source=parts.source, biblio_url=parts.biblio_url,
-                            original_url=parts.original_url, note=parts.source + " | " + parts.verification,
+                            original_url=parts.original_url, note=note,
                             biblio_sha256=sha256(parts.biblio), original_sha256=sha256(parts.original))
                         cache[resolved_key] = success
                     cache[cache_key] = success
@@ -195,7 +202,9 @@ def run(args):
             z.write(report, report.name)
             z.write(summary, summary.name)
     successes = sum(r["status"] == "성공" for r in results)
-    print(json.dumps({"success": successes, "failed": len(results)-successes, "report": str(report)}, ensure_ascii=False))
+    print(json.dumps({"success": successes, "failed": len(results)-successes,
+        "output_directory": str(args.out), "report": str(report),
+        "files": sorted({r["output_path"] for r in results if r["status"] == "성공"})}, ensure_ascii=False))
     return 0 if successes == len(results) else 1
 
 

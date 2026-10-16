@@ -14,8 +14,12 @@
 JP 2006-198019 A로 영문 서지·초록 1페이지 + 원문 전체 9페이지 = 최종 10페이지 생성과 시각 검수를 완료했습니다.
 
 ```sh
-python scripts/build_references.py --text "JP 2006-198019 A" --out output/jp --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --text "JP 2006-198019 A" --headed --channel chrome --interactive --human-timeout 300
 ```
+
+최종 PDF는 표준 특허번호 파일명으로 사용자 **다운로드 폴더**에 저장됩니다.
+다른 저장 위치는 `--out`으로 지정합니다. 동일 파일명이 있으면 기존 파일을 보존하고 `(2)`, `(3)`을 붙입니다.
+결과 엑셀의 파일명 링크와 결과 JSON의 절대 경로로 최종 파일을 확인할 수 있습니다.
 
 보안문자가 나오면 Chrome에서 숫자를 입력하고 Submit을 누릅니다. 같은 세션에서 파일 수신 후 검증·병합이 이어집니다.
 배치에서는 문헌마다 보안문자가 나올 수 있습니다. 화면 없는 실행의 403은 남은 제약이며 완전 무인화는 추가 추진하지 않습니다.

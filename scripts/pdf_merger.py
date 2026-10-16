@@ -1,6 +1,8 @@
 """Keep every original page; validate counts and publish atomically."""
 from pathlib import Path
 import hashlib
+import os
+import tempfile
 from pypdf import PdfReader, PdfWriter
 
 
@@ -31,7 +33,9 @@ def merge(biblio, original, output, expected_original_pages):
     if output.exists():
         raise FileExistsError(f"기존 결과를 덮어쓰지 않습니다: {output.name}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    tmp = output.with_suffix(".pdf.part")
+    fd, name = tempfile.mkstemp(prefix=".reference-", suffix=".pdf.part", dir=output.parent)
+    os.close(fd)
+    tmp = Path(name)
     writer = PdfWriter()
     try:
         writer.append(b)
@@ -48,3 +52,17 @@ def merge(biblio, original, output, expected_original_pages):
     finally:
         writer.close()
         tmp.unlink(missing_ok=True)
+
+
+def merge_unique(biblio, original, output, expected_original_pages):
+    """Keep existing files; record the actual numbered filename on collision."""
+    output = Path(output)
+    number = 1
+    while True:
+        candidate = output if number == 1 else output.with_name(f"{output.stem} ({number}){output.suffix}")
+        try:
+            return candidate, merge(biblio, original, candidate, expected_original_pages)
+        except FileExistsError:
+            if not candidate.exists():
+                raise
+            number += 1

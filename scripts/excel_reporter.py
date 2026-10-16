@@ -114,6 +114,10 @@ def write_report(path, sheets, layouts, results):
             for j, val in enumerate(vals, width + 1):
                 safe_cell(ws.cell(result["row"] + shift, j), val)
                 ws.cell(result["row"] + shift, j).alignment = Alignment(vertical="top", wrap_text=True)
+            if result.get("output_path"):
+                cell = ws.cell(result["row"] + shift, width + 2)
+                cell.hyperlink = Path(result["output_path"]).resolve().as_uri()
+                cell.style = "Hyperlink"
         from openpyxl.utils import get_column_letter
         for offset, size in enumerate([22, 42, 16, 85], width + 1):
             ws.column_dimensions[get_column_letter(offset)].width = size
