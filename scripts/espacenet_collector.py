@@ -5,6 +5,7 @@ from .input_parser import extract, resolve
 from .collector_common import Collected, print_biblio
 from .pdf_merger import inspect_pdf
 from .browser_session import CollectionError, HumanRequired, HumanWaitTimeout, navigate
+from .download_wait import wait_for_download
 
 
 START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
@@ -99,11 +100,23 @@ def download_original(page, publication, work, args):
     interactive = getattr(args, "interactive", False)
     wait_seconds = args.human_timeout if interactive else args.timeout
     if interactive:
-        print("Espacenet 원문 다운로드: 보안문자가 표시되면 브라우저에서 직접 입력하고 Submit을 누르세요. "
+        print(f"[{publication.key}] 원문 다운로드: 보안문자가 표시되면 브라우저에서 직접 입력하고 Submit을 누르세요. "
               "파일 수신 후 자동으로 이어갑니다. 터미널 Enter는 필요 없습니다.", flush=True)
     try:
-        with page.expect_download(timeout=wait_seconds * 1000) as pending:
-            download.click()
+        received = wait_for_download(page, download.click, href, wait_seconds, interactive)
+    except HumanWaitTimeout:
+        (work / 'download-stopped.html').write_text(page.content(), encoding='utf-8')
+        page.screenshot(path=str(work / 'download-stopped.png'))
+        for index, frame in enumerate(page.frames):
+            if frame is page.main_frame:
+                continue
+            try:
+                # Only the visible prompt/error is retained; form answers aren't logged.
+                text = frame.locator('body').inner_text(timeout=2000)
+                (work / f'download-frame-{index}.txt').write_text(text, encoding='utf-8')
+            except Exception:
+                pass
+        raise
     except BrowserTimeout as exc:
         for index, opened in enumerate(page.context.pages):
             if opened is page or opened.is_closed():
@@ -118,7 +131,6 @@ def download_original(page, publication, work, args):
             "공식 다운로드 버튼에서 파일 수신을 확인하지 못했습니다. "
             "열린 다운로드 창의 오류/사용자 확인 화면을 확인하거나 검토 manifest로 재개하세요."
         ) from exc
-    received = pending.value
     if received.failure():
         raise CollectionError("전체 다운로드 실패: " + received.failure())
     received.save_as(str(target))
