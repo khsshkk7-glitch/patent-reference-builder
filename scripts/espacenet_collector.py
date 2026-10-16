@@ -4,7 +4,7 @@ from urllib.parse import urljoin, urlparse, parse_qs
 from .input_parser import extract, resolve
 from .collector_common import Collected, print_biblio
 from .pdf_merger import inspect_pdf
-from .browser_session import CollectionError, HumanRequired, navigate, checkpoint
+from .browser_session import CollectionError, HumanRequired, HumanWaitTimeout, navigate
 
 
 START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
@@ -12,6 +12,7 @@ START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
 
 def collect(page, patent, work, args):
     navigate(page, START, args.retries)
+    page.wait_for_load_state("load")
     field = "#apEditBox" if patent.role == "application" else "#pnEditBox"
     page.locator(field).fill(patent.key)
     page.get_by_role("button", name="Search", exact=True).click()
@@ -73,12 +74,36 @@ def collect(page, patent, work, args):
         raise CollectionError('전체 다운로드 URL의 문헌번호/종별 연결을 확인하지 못했습니다.')
     from .browser_session import assert_official_url
     assert_official_url(href, 'Espacenet')
-    response = page.context.request.get(href, timeout=args.timeout * 1000)
-    if response.status in (401,403,429):
-        raise HumanRequired(f'전체 다운로드 HTTP {response.status}: 사용자 확인 필요')
-    if not response.ok:
-        raise CollectionError(f'전체 다운로드 HTTP {response.status}')
-    target.write_bytes(response.body())
+    page.wait_for_load_state("load")
+    # Keep the download in the actual browser session, including its normal
+    # navigation and download handling, instead of a separate HTTP client.
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    interactive = getattr(args, "interactive", False)
+    wait_seconds = args.human_timeout if interactive else args.timeout
+    if interactive:
+        print("Espacenet 원문 다운로드: 보안문자가 표시되면 브라우저에서 직접 입력하고 Submit을 누르세요. "
+              "파일 수신 후 자동으로 이어갑니다. 터미널 Enter는 필요 없습니다.", flush=True)
+    try:
+        with page.expect_download(timeout=wait_seconds * 1000) as pending:
+            download.click()
+    except BrowserTimeout as exc:
+        for index, opened in enumerate(page.context.pages):
+            if opened is page or opened.is_closed():
+                continue
+            try:
+                (work / f"download-window-{index}.html").write_text(opened.content(), encoding="utf-8")
+                opened.screenshot(path=str(work / f"download-window-{index}.png"))
+            except Exception:
+                pass
+        error_type = HumanWaitTimeout if interactive else HumanRequired
+        raise error_type(
+            "공식 다운로드 버튼에서 파일 수신을 확인하지 못했습니다. "
+            "열린 다운로드 창의 오류/사용자 확인 화면을 확인하거나 검토 manifest로 재개하세요."
+        ) from exc
+    received = pending.value
+    if received.failure():
+        raise CollectionError("전체 다운로드 실패: " + received.failure())
+    received.save_as(str(target))
     r = inspect_pdf(target)
     if len(r.pages) != count:
         raise CollectionError("전체 페이지 수와 다운로드 PDF 불일치")

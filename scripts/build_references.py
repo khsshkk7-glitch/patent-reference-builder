@@ -87,6 +87,9 @@ def collect(page, patent, work, args):
                 (work / (name + '-failure.html')).write_text(page.content(), encoding='utf-8')
             except Exception:
                 pass
+            if isinstance(exc, HumanWaitTimeout):
+                # Keep evidence, but do not restart a timed-out manual wait.
+                raise
             if isinstance(exc, HumanRequired) and args.interactive:
                 checkpoint(page, args, str(exc))
                 # One retry after human action; no unlimited retry or automated CAPTCHA solving.

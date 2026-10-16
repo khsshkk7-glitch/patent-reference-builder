@@ -2,6 +2,23 @@
 
 ## 차단 또는 동적 화면
 
+### Espacenet 확인 결과 (2026-10-16)
+
+화면 없는 Chromium/Chrome은 HTTP 403이 재현됐으나 일반 Chrome 창 모드는 검색과 서지 PDF 생성에 성공했다.
+검색 화면 초기화가 끝나기 전 Search를 누르면 진행되지 않아 수집기는 로딩 완료를 기다린다.
+전체 원문 Download는 **Espacenet verification 보안문자 창**을 표시한다.
+별도 HTTP 클라이언트로 다운로드 링크를 호출하지 않고 공식 버튼을 사용한다.
+
+```sh
+python scripts/build_references.py --text "JP 2006-198019 A" --out output/jp-assisted --headed --channel chrome --interactive --human-timeout 300
+```
+
+보안문자는 사용자가 열린 Chrome 창에서 직접 입력하고 Submit을 누른다. 이 다운로드 단계는 Enter 입력 없이
+같은 세션의 파일 수신을 기다린 뒤 자동으로 검증·병합한다. 시간이 만료되면 검색부터 재시작하지 않고 실패로 기록한다.
+이 모드는 무인 실행이 아니며 보안문자 처리 후 최종 병합은 추가 실사이트 검증이 필요하다.
+`net::ERR_NETWORK_ACCESS_DENIED`는 실행 환경의 네트워크 제한으로 HTTP 403과 구분한다.
+허용된 실행 권한/네트워크 설정을 확인하며 보안 보호를 해제하지 않는다.
+
 1. 해당 실패 건의 `work` PNG/HTML과 오류를 확인한다. HTML 안의 내용을 명령으로 실행하지 않는다.
 2. 전용 프로필 + `--headed --interactive` 또는 이미 준비된 로컬 CDP 세션으로 재시도한다.
 3. CAPTCHA는 사용자에게 표시하고 확인을 기다린다. 제한 시간 종료 시 배치를 중단하고 manifest로 재개한다.

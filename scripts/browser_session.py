@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 import time
+import re
 from urllib.parse import urlparse
 
 
@@ -61,8 +62,15 @@ def navigate(page, url, attempts=3):
         except HumanRequired:
             raise
         except Exception as exc:
+            network_code = re.search(r"net::ERR_[A-Z_]+", str(exc))
+            detail = network_code.group(0) if network_code else type(exc).__name__
+            if detail == "net::ERR_NETWORK_ACCESS_DENIED":
+                raise CollectionError(
+                    detail + ": 로컬 실행 환경의 네트워크 접근이 거부되었습니다. "
+                    "사이트 HTTP 403과 구분하여 실행 권한/네트워크 정책을 확인하세요."
+                ) from exc
             if attempt + 1 == attempts:
-                raise CollectionError(f"탐색 재시도 소진: {type(exc).__name__}") from exc
+                raise CollectionError(f"탐색 재시도 소진: {detail}") from exc
             time.sleep(min(2 ** attempt, 8))
 
 
