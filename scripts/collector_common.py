@@ -7,6 +7,57 @@ from .pdf_merger import inspect_pdf, sha256
 from .browser_session import CollectionError, assert_official_url
 
 
+def trim_blank_print_tail(path):
+    """Remove only provably empty/white rectangle overflow in printed bibliography.
+
+    Unknown drawing operators, text, images and annotations are retained.
+    Never apply this to an official original publication.
+    """
+    from pypdf import PdfWriter
+    from pypdf.generic import ContentStream
+    def blank(page, reader):
+        if page.get('/Annots'):
+            return False
+        stream = page.get_contents()
+        if stream is None:
+            return True
+        white, stack = False, []
+        for operands, op in ContentStream(stream, reader).operations:
+            if op == b'q':
+                stack.append(white)
+            elif op == b'Q':
+                if not stack:
+                    return False
+                white = stack.pop()
+            elif op in (b'rg', b'g'):
+                white = all(float(x) == 1 for x in operands)
+            elif op in (b'RG', b'G'):
+                pass  # Stroke colour does not paint; stroke operators are rejected.
+            elif op == b'f':
+                if not white:
+                    return False
+            elif op not in (b'cm', b'gs', b're'):
+                return False
+        return not stack
+    reader = inspect_pdf(path)
+    keep = len(reader.pages)
+    while keep > 1 and blank(reader.pages[keep-1], reader):
+        keep -= 1
+    if keep == len(reader.pages):
+        return 0
+    writer = PdfWriter()
+    writer.append(reader, pages=(0, keep))
+    if reader.metadata:
+        writer.add_metadata(dict(reader.metadata))
+    # Build bytes before replacing the generated print file.
+    import io
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    writer.close()
+    Path(path).write_bytes(buffer.getvalue())
+    return len(reader.pages)-keep
+
+
 @dataclass
 class Collected:
     publication: object
@@ -62,6 +113,7 @@ def print_biblio(page, container, abstract, path, hide=(), scale=1):
         page.wait_for_function("""() => [...document.querySelectorAll('[data-reference-print-root] img')].every(i=>i.complete && i.naturalWidth>0)""")
         page.pdf(path=str(path), format="A4", print_background=True, prefer_css_page_size=True,
                  display_header_footer=False, scale=scale)
+        trim_blank_print_tail(path)
         reader = inspect_pdf(path)
         printed = " ".join(p.extract_text() or "" for p in reader.pages)
         # Detect accidental clipping/missing abstract, independent of page count.
