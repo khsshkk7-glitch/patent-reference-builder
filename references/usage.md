@@ -55,6 +55,20 @@ Windows 위치 조회가 실패하면 오류를 알리고 `--out`으로 명시�
 
 ## 브라우저 옵션
 
+KIPRIS를 이용할 때는 일반 Chrome 연결 모드를 우선 사용한다.
+
+```sh
+python scripts/build_references.py --input "list.xlsx" --source kipris --native-chrome --headed --no-fallback --zip
+```
+
+`--native-chrome`은 설치된 Google Chrome을 별도 임시 프로필로 실행하고 127.0.0.1의 임시 포트로 연결한다.
+작업이 끝나면 자신이 연 브라우저만 종료하며 사용자의 평소 Chrome 프로필은 사용하지 않는다.
+`--headed`가 필요하고 `--profile`, `--cdp`, `--channel msedge`와 함께 쓸 수 없다.
+준비된 사용자 작업용 Chrome이 있으면 기존 `--cdp` 옵션도 사용할 수 있다.
+`--no-fallback`은 `--source kipris`와 함께 사용하며 KIPRIS 원문 실패 시 Espacenet으로 대체하지 않는다.
+기본 `auto` 방식은 기존과 같이 Espacenet 우선이며, KR의 KIPRIS 폴백을 예상하는 혼합 배치도 처음부터
+`--native-chrome --headed`로 열 수 있다. 보안문자 입력이 필요한 배치에는 `--interactive`를 추가한다.
+
 - `--headed`: 화면이 보이는 Chromium. 기본은 headless.
 - `--channel chrome` 또는 `--channel msedge`: 설치된 브라우저 채널.
 - `--profile PATH`: 참증 작업 전용 프로필. 평소 사용 중인 기본 프로필을 지정하지 않는다.

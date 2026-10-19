@@ -15,8 +15,8 @@ description: 특허번호를 채팅 또는 엑셀·CSV로 받아 Espacenet/KIPRI
 [실행 방법](references/usage.md)을 읽는다. Python 3.10 이상과 requirements.txt가 필요하다.
 
 ```sh
-python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --headed --channel chrome --interactive --human-timeout 300
-python scripts/build_references.py --input "/absolute/path/list.xlsx" --zip --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --native-chrome --headed --interactive --human-timeout 300
+python scripts/build_references.py --input "/absolute/path/list.xlsx" --zip --native-chrome --headed --interactive --human-timeout 300
 ```
 
 사용자가 다른 저장 위치를 지정하지 않으면 `--out`을 생략하여 OS에 설정된 사용자 다운로드 폴더에 저장한다.
@@ -24,12 +24,22 @@ Windows는 변경·리디렉션된 다운로드 위치도 반영한다. 사용�
 완료 시 결과 JSON의 `output_path`에 있는 실제 절대 경로로 클릭 가능한 최종 파일 링크를 안내한다.
 
 온라인 수집은 **Chrome 창을 열고 보안문자만 사용자가 입력하는 방식**을 기본 운영 흐름으로 사용한다.
+KIPRIS를 사용할 KR 단건·혼합 배치는 `--native-chrome --headed`로 실행한다. 설치된 일반 Chrome을
+별도 작업용 프로필로 열고 로컬로 연결하는 지원 모드이며, 기존 `--cdp`/`--profile`과 함께 지정하지 않는다.
+KIPRIS 직접 수집을 검증하거나 Espacenet에 없는 문헌을 처리할 때는 다음처럼 대체 수집을 금지한다.
+
+```sh
+python scripts/build_references.py --text "KR20200137353A" --source kipris --native-chrome --headed --no-fallback
+```
+
 Espacenet 다운로드 때 보안문자가 나오면 사용자가 숫자를 입력하고 Submit을 누르도록 안내한다.
 같은 브라우저에서 파일 수신 후 다운로드·검증·병합을 자동으로 이어가므로 이 단계에서는 터미널 Enter가 필요 없다.
 문헌마다 보안문자가 다시 나올 수 있다. 사용자와 합의한 운영 방식이므로 완전 무인화를 위해 추가 우회·조사를 진행하지 않는다.
 JP 샘플에서 이 흐름으로 1+9=10페이지 결과를 검증했다. KIPRIS 국내 상세 연결이 시간 초과되면
 이미 만든 KPA 영문 인쇄본을 보존하고 동일 공보번호·종별의 Espacenet 원문만 수집해 복구한다.
-이때 보고서 출처는 `KIPRIS + Espacenet`으로 기록한다. KIPRIS 자체 상세 오류가 해결됐다고 설명하지 않는다.
+이때 보고서 출처는 `KIPRIS + Espacenet`으로 기록한다. Espacenet 대체 성공을 KIPRIS 직접 수집 성공으로 설명하지 않는다.
+단, 2026-10-19 일반 Chrome 연결 모드에서는 KIPRIS만 사용한 직접 수집을 4건 검증했다.
+독립 자동 실행 모드의 오류 주소 전환과 정상 Chrome 연결 모드의 성공을 구분한다.
 KR20200137353A에서도 사용자 보안문자 입력 후 KPA 1페이지 + Espacenet 원문 19페이지의 최종 20페이지 생성·시각 검수를 완료했다.
 
 1. 사용자가 채팅으로 준 번호 또는 실제 첨부 경로를 `--text`/`--input`으로 전달한다.

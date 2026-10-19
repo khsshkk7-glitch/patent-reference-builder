@@ -69,6 +69,28 @@ def national_number(patent):
     return ('10' + patent.number) if len(patent.number) == 11 else patent.number
 
 
+def domestic_number_matches(text, number, kind):
+    # KIPRIS domestic registration numbers append a four-digit serial suffix.
+    suffix = r'(?:0000)?' if kind.startswith('B') else ''
+    return bool(re.search(r'(?<!\d)' + re.escape(number) + suffix + r'(?!\d)', text))
+
+
+def official_cover_text(path):
+    # Older KIPRIS originals use KSCms-UHC-H, unsupported by pypdf extraction.
+    # PDFium reads the original bytes; it does not alter or translate the PDF.
+    import pypdfium2
+    with pypdfium2.PdfDocument(path) as document:
+        page = document[0]
+        try:
+            textpage = page.get_textpage()
+            try:
+                return textpage.get_text_range()
+            finally:
+                textpage.close()
+        finally:
+            page.close()
+
+
 def collect(page, patent, work, args):
     """Default adapter inspected on 2026-10-15; KPA then domestic full PDF."""
     if args.selectors.get('kipris'):
@@ -128,6 +150,8 @@ def collect(page, patent, work, args):
         (work / 'kipris-domestic-error.txt').write_text(str(exc), encoding='utf-8')
         (work / 'kipris-domestic-failure.html').write_text(page.content(), encoding='utf-8')
         page.screenshot(path=str(work / 'kipris-domestic-failure.png'))
+        if getattr(args, 'no_fallback', False):
+            raise CollectionError('KIPRIS 직접 원문 수집 실패; --no-fallback으로 Espacenet 대체 금지') from exc
         return recover_original(page, publication, biblio, biblio_url, work, args)
 
 
@@ -154,11 +178,11 @@ def collect_domestic(page, publication, application_number, number, biblio, bibl
     match.get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
     pane = page.locator('#mainResultDetail')
     label = '등록번호(일자)' if publication.kind.startswith('B') else '공개번호(일자)'
-    domestic = pane.locator('tr').filter(has_text=label)
+    domestic = pane.locator('tr').filter(has=page.get_by_role('rowheader', name=label, exact=True))
     domestic.wait_for(state='visible')
-    if not re.search(r'(?<!\d)' + number + r'(?!\d)', domestic.inner_text()):
+    if not domestic_number_matches(domestic.inner_text(), number, publication.kind):
         raise CollectionError('국내 원문 공보번호가 KPA와 일치하지 않습니다.')
-    pane.get_by_role('button', name='등록전문' if publication.kind.startswith('B') else '공개전문', exact=True).click()
+    pane.get_by_role('button', name=re.compile(r'^(?:공고|등록)전문$') if publication.kind.startswith('B') else '공개전문', exact=True).click()
     iframe = pane.locator('iframe')
     iframe.wait_for(state='attached')
     src = iframe.get_attribute('src')
@@ -166,8 +190,14 @@ def collect_domestic(page, publication, application_number, number, biblio, bibl
     file_url = parse_qs(urlparse(src).query).get('file', [''])[0].split('#')[0]
     if not file_url.startswith('blob:https://www.kipris.or.kr/'):
         raise CollectionError('공식 전문 뷰어 PDF 연결이 변경되었습니다. 선택자 프로필 또는 manifest로 재개하세요.')
-    frame = page.frame_locator('#mainResultDetail iframe')
-    frame.locator('#numPages').wait_for(state='visible')
+    frame = iframe.element_handle().content_frame()
+    if frame is None:
+        raise CollectionError('전문 PDF 뷰어 프레임 준비 실패')
+    frame.wait_for_function(r"""() => {
+      const el=document.querySelector('#numPages');
+      const n=el && el.textContent.match(/\d+/g);
+      return n && n.length===1 && Number(n[0])>0;
+    }""")
     page_text = frame.locator('#numPages').inner_text()
     numbers = re.findall(r'\d+', page_text)
     if len(numbers) != 1 or int(numbers[0]) < 1:
@@ -188,10 +218,13 @@ def collect_domestic(page, publication, application_number, number, biblio, bibl
     if len(reader.pages) != count:
         raise CollectionError('원문 전체 페이지 수 불일치')
     # Korean official cover separates country/kind/number across different fields.
-    cover = reader.pages[0].extract_text() or ''
+    cover = official_cover_text(original)
     compact = re.sub(r'\s+', '', cover)
     display_number = '10-' + publication.number[:4] + '-' + publication.number[4:] if len(publication.number)==11 else publication.number[:2]+'-'+publication.number[2:]
     if cover.strip() and display_number not in compact and number not in compact:
         raise CollectionError('원문 표지 번호가 요청한 공보와 일치하지 않습니다.')
+    kinds = re.findall(r'공보\s*\(\s*([AB]\d*)\s*\)', cover)
+    if kinds and publication.kind not in kinds:
+        raise CollectionError('원문 표지의 공개/등록 종류 코드가 요청과 일치하지 않습니다.')
     return Collected(publication, biblio, original, count, 'KIPRIS', biblio_url, page.url,
         'KPA 공고번호·출원번호로 국내 공보 연결, 전문 뷰어 전체 페이지 수 대조; 최종 시각 검수 필요')

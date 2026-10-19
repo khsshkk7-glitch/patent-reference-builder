@@ -24,8 +24,18 @@ python scripts/build_references.py --text "JP 2006-198019 A" --headed --channel 
 보안문자가 나오면 Chrome에서 숫자를 입력하고 Submit을 누릅니다. 같은 세션에서 파일 수신 후 검증·병합이 이어집니다.
 배치에서는 문헌마다 보안문자가 나올 수 있습니다. 화면 없는 실행의 403은 남은 제약이며 완전 무인화는 추가 추진하지 않습니다.
 [Espacenet 이슈 #1](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/1)은 사용자 확인 방식으로 운영 범위를 확정했습니다.
-[KIPRIS 국내 전문 수집 이슈 #2](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/2)의 사이트 상세 오류는 미해결입니다.
-국내 상세 연결이 시간 초과되면 KPA 영문 인쇄본을 보존하고 동일 공개번호·종별의 Espacenet 원문으로 복구하는 경로를 추가했습니다.
+[KIPRIS 국내 전문 수집 이슈 #2](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/2)는
+일반 Chrome 연결 모드에서 **KIPRIS만 사용하는 직접 수집**을 구현하고 공개공보 3건·등록공보 B1 1건으로 검증했습니다.
+독립 자동 실행 Chrome의 오류 주소 전환은 여전히 재현되므로 KIPRIS 작업에는 다음 지원 모드를 사용합니다.
+
+```sh
+python scripts/build_references.py --text "KR20200137353A" --source kipris --native-chrome --headed --no-fallback
+```
+
+`--native-chrome`은 설치된 일반 Chrome을 별도 작업용 프로필로 열고 로컬로 연결합니다.
+`--no-fallback`은 KIPRIS 원문을 받지 못하면 Espacenet으로 대체하지 않고 실패로 기록합니다.
+직접 수집 결과는 KPA 영문 인쇄본 + KIPRIS 공식 원문이며 출처는 `KIPRIS`입니다.
+기존 방식에서 국내 상세 연결이 시간 초과되면 KPA 영문 인쇄본을 보존하고 동일 공개번호·종별의 Espacenet 원문으로 복구할 수도 있습니다.
 출처는 `KIPRIS + Espacenet`으로 기록합니다. KR20200137353A에서 보안문자 사용자 입력 후 KPA 1페이지 + 원문 19페이지의 최종 20페이지 생성·시각 검수를 완료했습니다.
 접근 불가 문헌은 정상 브라우저 세션 또는 검토된 로컬 PDF manifest로 재개할 수 있습니다.
 

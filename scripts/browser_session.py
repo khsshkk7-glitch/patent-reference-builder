@@ -1,5 +1,5 @@
 """Bounded retries and explicit human-assisted recovery; no CAPTCHA bypass."""
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from pathlib import Path
 import time
 import re
@@ -21,9 +21,18 @@ class HumanWaitTimeout(HumanRequired):
 @contextmanager
 def browser_session(args):
     from playwright.sync_api import sync_playwright
-    with sync_playwright() as pw:
+    native = getattr(args, 'native_chrome', False)
+    if native and (not args.headed or args.cdp or args.profile or args.channel not in (None, 'chrome')):
+        raise ValueError('--native-chrome은 --headed와 함께, --cdp/--profile/Edge 없이 사용하세요.')
+    with ExitStack() as resources, sync_playwright() as pw:
         browser = None
-        if args.cdp:
+        if native:
+            from .native_chrome import native_chrome
+            endpoint = resources.enter_context(native_chrome())
+            browser = pw.chromium.connect_over_cdp(endpoint)
+            context = browser.contexts[0]
+            owned = False
+        elif args.cdp:
             if urlparse(args.cdp).hostname not in ("127.0.0.1", "localhost", "::1"):
                 raise ValueError("CDP는 로컬 브라우저에만 연결하세요.")
             browser = pw.chromium.connect_over_cdp(args.cdp)
@@ -47,6 +56,8 @@ def browser_session(args):
                 context.close()
                 if browser:
                     browser.close()
+            elif native:
+                browser.close()
             # The attached user's browser and pre-existing tabs remain open.
 
 

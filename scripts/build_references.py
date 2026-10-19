@@ -38,6 +38,8 @@ def parser():
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--zip", action="store_true")
     p.add_argument("--headed", action="store_true")
+    p.add_argument("--native-chrome", action="store_true", help="설치된 일반 Chrome을 작업용 프로필로 열고 로컬 연결 (KIPRIS 권장)")
+    p.add_argument("--no-fallback", action="store_true", help="KIPRIS 원문 실패 시 Espacenet 대체 수집 금지")
     p.add_argument("--interactive", action="store_true")
     p.add_argument("--human-timeout", type=int, default=300)
     p.add_argument("--timeout", type=int, default=40)
@@ -102,6 +104,10 @@ def collect(page, patent, work, args):
 
 
 def run(args):
+    if args.native_chrome and (not args.headed or args.cdp or args.profile or args.channel not in (None, 'chrome')):
+        raise ValueError('--native-chrome은 --headed와 함께, --cdp/--profile/Edge 없이 사용하세요.')
+    if args.no_fallback and args.source != 'kipris':
+        raise ValueError('--no-fallback은 --source kipris 직접 수집 검증에 사용하세요.')
     if args.interactive and not (args.headed or args.cdp):
         raise ValueError("--interactive는 --headed 또는 --cdp와 함께 사용하세요.")
     if not 1 <= args.retries <= 5 or args.timeout < 1 or args.human_timeout < 1 or args.delay < 0:
