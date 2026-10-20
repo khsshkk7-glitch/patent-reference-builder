@@ -33,12 +33,16 @@ class BrowserContract(unittest.TestCase):
     def test_original_only_does_not_require_espacenet_english_abstract(self):
         self.check_download(interactive=False, original_only=True)
 
-    def check_download(self, interactive, original_only=False):
+    def test_ops_replaces_browser_download_and_keeps_viewer_validation(self):
+        self.check_download(interactive=False,ops=True)
+
+    def check_download(self, interactive, original_only=False, ops=False):
         with tempfile.TemporaryDirectory() as tmp:
             context = self.browser.new_context()
             def route(r):
                 url = r.request.url
                 if 'flavour=trueFull' in url:
+                    if ops:self.fail('OPS mode must not trigger browser full-download')
                     w=PdfWriter();w.add_blank_page(width=595.28,height=841.89);w.add_blank_page(width=595.28,height=841.89)
                     out=io.BytesIO();w.write(out);w.close()
                     return r.fulfill(body=out.getvalue(),content_type='application/pdf',
@@ -63,6 +67,18 @@ class BrowserContract(unittest.TestCase):
             context.route('**/*',route)
             page=context.new_page();page.set_default_timeout(3000)
             args=SimpleNamespace(retries=1,timeout=3,interactive=interactive,human_timeout=3)
+            if ops:
+                from unittest.mock import Mock
+                def api_download(publication,work,expected_pages):
+                    self.assertEqual(publication.key,'JP2006198019A')
+                    self.assertEqual(expected_pages,2)
+                    target=Path(work)/'original-ops.pdf'
+                    writer=PdfWriter()
+                    for _ in range(2):writer.add_blank_page(width=595.28,height=841.89)
+                    writer.write(target);writer.close()
+                    return target,2,'https://ops.epo.org/3.2/rest-services/published-data/publication/docdb/JP.2006198019.A/images'
+                args.original_method='ops'
+                args.ops_client=Mock();args.ops_client.download.side_effect=api_download
             if original_only:
                 publication, original, count, url=collect_original(page,one('JP 2006-198019 A'),Path(tmp),args)
                 self.assertEqual(publication.key,'JP2006198019A')
@@ -71,6 +87,7 @@ class BrowserContract(unittest.TestCase):
                 context.close()
                 return
             result=collect(page,one('JP 2006-198019 A'),Path(tmp),args)
+            if ops:self.assertEqual(result.source,'Espacenet + EPO OPS')
             self.assertEqual(result.original_pages,2)
             self.assertIn(ABSTRACT, ' '.join(p.extract_text() for p in PdfReader(result.biblio).pages).replace('\n',' '))
             self.assertEqual(len(PdfReader(result.original).pages),2)

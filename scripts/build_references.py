@@ -43,6 +43,7 @@ def parser():
     p.add_argument("--native-chrome", action="store_true", help="설치된 일반 Chrome을 작업용 프로필로 열고 로컬 연결 (KIPRIS 권장)")
     p.add_argument("--no-fallback", action="store_true", help="KIPRIS 원문 실패 시 Espacenet 대체 수집 금지")
     p.add_argument("--interactive", action="store_true")
+    p.add_argument('--original-method',choices=['auto','browser','ops'],default='auto',help='Espacenet 원문: 키 설정 시 공식 OPS 우선, 없으면 기존 브라우저')
     p.add_argument("--human-timeout", type=int, default=300)
     p.add_argument("--timeout", type=int, default=40)
     p.add_argument("--retries", type=int, default=3)
@@ -153,6 +154,12 @@ def run(args):
         summary.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         write_report(report, sheets, layouts, results)
     need_browser = any(p and p.key not in manifest and p.key not in ai_manifest for _, p, _ in parsed)
+    if args.original_method == 'ops' and need_browser:
+        from .ops_client import configured
+        if args.source == 'kipris':
+            raise ValueError('--original-method ops는 Espacenet 원문용이며 --source kipris와 함께 사용하지 않습니다.')
+        if not configured():
+            raise ValueError('OPS API 키 미설정. 로컬에서 scripts/run_with_ops.py를 사용하거나 EPO_OPS_KEY/EPO_OPS_SECRET을 설정하세요.')
     context = browser_session(args) if need_browser else nullcontext(None)
     browser_error = None
     context_entered = False
@@ -223,6 +230,8 @@ def run(args):
                     result['diagnostics'] = exc.diagnostics
                     result['error_code'] = exc.diagnostics[0]['code']
                     result['missing_fields'] = sorted({f for d in exc.diagnostics for f in d.get('missing_fields',[])})
+            if patent and patent.key in getattr(args,'download_metrics',{}):
+                result['download_metrics'] = dict(args.download_metrics[patent.key])
             results.append(result)
             save()  # Resume evidence and results survive subsequent item failures.
             print(f"[{index}/{len(parsed)}] {result['status']}: {row.value}", flush=True)

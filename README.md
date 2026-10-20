@@ -22,7 +22,11 @@ python scripts/build_references.py --text "JP 2006-198019 A" --headed --channel 
 결과 엑셀의 파일명 링크와 결과 JSON의 절대 경로로 최종 파일을 확인할 수 있습니다.
 
 보안문자가 나오면 Chrome에서 숫자를 입력하고 Submit을 누릅니다. 같은 세션에서 파일 수신 후 검증·병합이 이어집니다.
-배치에서는 문헌마다 보안문자가 나올 수 있습니다. 화면 없는 실행의 403은 남은 제약이며 완전 무인화는 추가 추진하지 않습니다.
+사용자 입력 부담을 줄이기 위해 공식 EPO OPS 원문 연결을 추가했습니다. 계정·API 키가 필요하며
+키 발급 전에는 실서비스 다운로드가 검증되지 않았습니다. [발급·로컬 연결 방법](references/ops-setup.md)을 참고하세요.
+이 경로는 보안문자 자동 입력 기능이 아니며 영문 서지 웹 접근까지 완전 무인화한 것은 아닙니다.
+브라우저 배치에서는 문헌마다 보안문자가 나올 수 있습니다. 화면 없는 실행의 403은 남은 제약이며,
+이슈 #6에서 공식 API를 통한 원문 자동 수집을 검토·구현 중입니다. 키 발급 후 실제 검증이 남아 있습니다.
 [Espacenet 이슈 #1](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/1)은 사용자 확인 방식으로 운영 범위를 확정했습니다.
 [KIPRIS 국내 전문 수집 이슈 #2](https://github.com/khsshkk7-glitch/patent-reference-builder/issues/2)는
 일반 Chrome 연결 모드에서 **KIPRIS만 사용하는 직접 수집**을 구현하고 공개공보 3건·등록공보 B1 1건으로 검증했습니다.

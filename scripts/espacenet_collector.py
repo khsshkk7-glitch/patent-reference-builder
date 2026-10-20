@@ -76,8 +76,10 @@ def collect(page, patent, work, args):
     biblio = work / "biblio.pdf"
     print_biblio(page, "#pagebody", abstract, biblio)
     target, count, original_url = download_original(page, publication, work, args)
-    return Collected(publication, biblio, target, count, "Espacenet", biblio_url, original_url,
-        "서지·초록 번호 및 공식 전체 다운로드 URL 종별 일치; 사이트 전체 페이지 수 대조. 최종 시각 검수 필요")
+    ops = original_url.startswith('https://ops.epo.org/')
+    return Collected(publication, biblio, target, count, 'Espacenet + EPO OPS' if ops else 'Espacenet', biblio_url, original_url,
+        ('OPS 공식 단일 페이지 PDF를 순서대로 조립; Espacenet 뷰어 총 페이지 수 대조. ' if ops else '')
+        +"서지·초록 번호 및 공식 전체 다운로드 URL 종별 일치; 사이트 전체 페이지 수 대조. 최종 시각 검수 필요")
 
 
 def collect_original(page, patent, work, args):
@@ -92,8 +94,10 @@ def collect_original_only(page, patent, work, args):
     _, missing = inspect_bibliography(page, publication)
     biblio_url = page.url
     target, count, url = download_original(page, publication, work, args)
-    return Collected(publication, None, target, count, 'Espacenet', biblio_url, url,
+    ops = url.startswith('https://ops.epo.org/')
+    return Collected(publication, None, target, count, 'Espacenet + EPO OPS' if ops else 'Espacenet', biblio_url, url,
         '원문 단독 수집; 영문 서지·초록이 결합된 완성 참증 아님; 공식 전문 URL·종별·전체 페이지 수 대조'
+        + ('; OPS 공식 페이지 PDF 순서 조립' if ops else '')
         + ('; 화면 누락: '+', '.join(MetadataUnavailable.labels[k] for k in missing) if missing else ''), missing)
 
 
@@ -112,6 +116,23 @@ def download_original(page, publication, work, args):
     if len(numbers) != 1:
         raise CollectionError("전문 전체 페이지 수를 확인하지 못했습니다. manifest로 검토 후 재개하세요.")
     count = numbers.pop()
+    from .ops_client import OpsClient, configured
+    method = getattr(args,'original_method','auto')
+    if not hasattr(args,'download_metrics'):
+        args.download_metrics = {}
+    metrics = args.download_metrics[publication.key] = {'method':'browser','captcha_prompts':0,'status':'started'}
+    if method == 'ops' or (method == 'auto' and configured()):
+        metrics['method'] = 'EPO OPS'
+        try:
+            if not hasattr(args,'ops_client'):
+                args.ops_client = OpsClient(timeout=args.timeout)
+            result = args.ops_client.download(publication,work,expected_pages=count)
+            metrics.update(status='downloaded',pages=count)
+            return result
+        except Exception:
+            metrics['status']='failed'
+            # A quota/auth/data failure must not silently switch to CAPTCHA.
+            raise
     download = page.get_by_role("link", name=re.compile(r"^Download(?: full document| document)?$", re.I))
     if download.count() != 1:
         raise CollectionError("전체 문서 다운로드 버튼을 확인하지 못했습니다.")
@@ -133,7 +154,9 @@ def download_original(page, publication, work, args):
         print(f"[{publication.key}] 원문 다운로드: 보안문자가 표시되면 브라우저에서 직접 입력하고 Submit을 누르세요. "
               "파일 수신 후 자동으로 이어갑니다. 터미널 Enter는 필요 없습니다.", flush=True)
     try:
-        received = wait_for_download(page, download.click, href, wait_seconds, interactive)
+        def prompt(number):
+            print(f'[{publication.key}] 보안문자 표시 {number}회: 열린 Chrome에서 입력 후 Submit을 누르세요. 같은 창에서 자동 재개합니다.',flush=True)
+        received = wait_for_download(page, download.click, href, wait_seconds, interactive, metrics=metrics,on_prompt=prompt)
     except HumanWaitTimeout:
         (work / 'download-stopped.html').write_text(page.content(), encoding='utf-8')
         page.screenshot(path=str(work / 'download-stopped.png'))

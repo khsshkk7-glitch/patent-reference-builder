@@ -147,12 +147,12 @@ def from_manifest(requested, entry, base):
     else:
         resolve(requested, [publication])
     source = entry["source"]
-    if source not in ("Espacenet", "KIPRIS", "KIPRIS + Espacenet"):
+    if source not in ("Espacenet", "KIPRIS", "KIPRIS + Espacenet", 'Espacenet + EPO OPS'):
         raise CollectionError("지원 출처는 Espacenet/KIPRIS입니다.")
     if source in ("KIPRIS", "KIPRIS + Espacenet") and publication.country != "KR":
         raise CollectionError("KIPRIS 보조 수집은 KR만 지원합니다.")
-    biblio_source = "KIPRIS" if source == "KIPRIS + Espacenet" else source
-    original_source = "Espacenet" if source == "KIPRIS + Espacenet" else source
+    biblio_source = 'Espacenet' if source in ('Espacenet','Espacenet + EPO OPS') else 'KIPRIS'
+    original_source = 'KIPRIS' if source == 'KIPRIS' else 'Espacenet'
     assert_official_url(entry["biblio_url"], biblio_source)
     assert_official_url(entry["original_url"], original_source)
     for key in ("identity_verified", "english_abstract_verified", "full_document_verified", "layout_verified"):

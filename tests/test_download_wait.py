@@ -59,3 +59,14 @@ class DownloadWait(TestCase):
             with self.assertRaisesRegex(HumanWaitTimeout,'대기 시간 초과'):
                 wait_for_download(page,lambda:None,URL,1,True)
         self.assertEqual(page.listeners,{})
+
+    def test_prompt_counts_and_callback_are_recorded_without_answers(self):
+        page=Page();metrics={};notices=[];item=object()
+        def trigger():
+            page.listeners['response'](verification())
+            page.next_event=lambda:page.listeners['download'](item)
+        self.assertIs(wait_for_download(page,trigger,URL,5,True,metrics=metrics,on_prompt=notices.append),item)
+        self.assertEqual(notices,[1])
+        self.assertEqual(metrics['captcha_prompts'],1)
+        self.assertEqual(metrics['status'],'downloaded')
+        self.assertNotIn('answer',metrics)
