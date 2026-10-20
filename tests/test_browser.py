@@ -49,6 +49,7 @@ class BrowserContract(unittest.TestCase):
                     html='<a id="publicationId1" href="/biblio">Storage shelf</a>'
                 elif '/biblio' in url:
                     html=f'''<div id="pagebody"><h1>Bibliographic data: JP2006198019 (A)</h1>
+                    <span id="bookmarkTitle">Storage shelf</span>
                     <div id="inventorsRow">Example Inventor</div><div id="applicantsRow">Example Applicant</div>
                     <div class="application article"><h3>Abstract of JP2006198019 (A)</h3><p>{ABSTRACT}</p></div></div>
                     <a href="/original">Original document</a>'''

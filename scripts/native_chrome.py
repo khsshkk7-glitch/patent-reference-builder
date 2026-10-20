@@ -38,16 +38,19 @@ def native_chrome():
         try:
             deadline = time.monotonic()+15
             while True:
-                if process.poll() is not None:
-                    raise RuntimeError('작업용 Chrome이 연결 준비 전에 종료됐습니다.')
                 try:
                     with urlopen(endpoint+'/json/version', timeout=1) as response:
                         if response.status == 200:
                             break
                 except OSError:
                     pass
+                exit_code = process.poll()
+                if exit_code not in (None, 0):
+                    raise RuntimeError(f'작업용 Chrome이 연결 준비 전에 비정상 종료했습니다 (종료 코드 {exit_code}).')
                 if time.monotonic() >= deadline:
-                    raise RuntimeError('작업용 Chrome의 로컬 연결 준비 시간 초과')
+                    # A Chrome launcher can exit 0 while its browser child starts.
+                    raise RuntimeError(f'작업용 Chrome의 로컬 연결 준비 시간 초과 (시작 프로세스 종료 코드 {exit_code}). '
+                        '공식 특허 자료 누락과 별개의 브라우저 시작 오류입니다. --cdp 또는 --channel chrome --headed로 확인하세요.')
                 time.sleep(.2)
             yield endpoint
         finally:

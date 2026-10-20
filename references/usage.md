@@ -79,3 +79,29 @@ python scripts/build_references.py --input "list.xlsx" --source kipris --native-
 - `--timeout 40 --retries 3 --delay 2`: 개별 대기 초, 탐색 최대 시도 횟수, 문헌 간 간격.
 
 수집기는 확인한 UI에 대해 동작한다. 사이트 변경이나 접근 제한 때 복구 문서를 따라 검토된 자료로 재개한다.
+
+## 영문 서지·초록 누락 시 별도 자료
+
+`OFFICIAL_DATA_MISSING`과 `missing_fields`는 접근 차단과 다른 공식 화면의 자료 누락이다.
+해당 문헌을 완성 참증 성공으로 처리하지 않는다. 원문만 요청한 경우:
+
+```sh
+python scripts/build_references.py --text JP3102826U --native-chrome --headed --original-only --interactive --zip
+```
+
+다운로드 폴더의 `원문만/JP 3102826 U.pdf`에 공식 원본 바이트를 보존한다.
+보고서는 `status=원문만`, `result_type=original_only`, `complete_reference=false`, 영문 누락 항목을 기록한다.
+집계는 `success`(완성 참증), `original_only`, `failed`를 구분한다. 요청한 원문 단독 수집이 끝나면 종료코드는 0이다.
+ZIP도 `원문만_…zip`이며 내부의 별도 폴더를 보존한다.
+
+J-PlatPat의 JP U 영문 기계번역을 사용자가 **별도 보완자료로 명시적으로 허용했을 때만**:
+
+```sh
+python scripts/jplatpat_supplement.py --text JP3102826U --source-url https://www.j-platpat.inpit.go.jp/c1801/PU/JP-3102826/25/en --acknowledge-machine-translation --native-chrome --headed
+```
+
+공식 UI에서 얻은 동일 공보 영문 영구 URL을 전달한다. 다른 공보·종별·출처는 거절한다.
+출처 번역문을 다시 번역하거나 보충하지 않고 인쇄용으로 배치한다. 공식 기계번역 고지와 대표도면을 보존하며
+`기계번역 보완자료/JP 3102826 U.pdf`에 `MACHINE-TRANSLATED SUPPLEMENT — NOT A COMPLETE REFERENCE`를 표시한다.
+별도 JSON은 `status=보완자료`, `complete_reference=false`이며 일반 참증 병합에 사용하지 않는다.
+미번역·대표도면 로드 실패는 중단하고 근거 화면을 보존한다. JP3102826U 외 문헌은 개별 검증이 필요하다.

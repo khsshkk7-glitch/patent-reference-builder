@@ -4,7 +4,7 @@ from urllib.parse import urljoin, urlparse, parse_qs
 from .input_parser import extract, resolve
 from .collector_common import Collected, print_biblio
 from .pdf_merger import inspect_pdf
-from .browser_session import CollectionError, HumanRequired, HumanWaitTimeout, navigate
+from .browser_session import CollectionError, MetadataUnavailable, HumanRequired, HumanWaitTimeout, navigate
 from .download_wait import wait_for_download
 
 
@@ -36,8 +36,8 @@ def open_record(page, patent, args):
     return publication
 
 
-def collect(page, patent, work, args):
-    publication = open_record(page, patent, args)
+def inspect_bibliography(page, publication):
+    """Record all observed gaps before choosing complete or original-only output."""
     page.locator("#pagebody .application.article").wait_for(state="visible")
     article = page.locator("#pagebody .application.article")
     heading = article.locator("h3").inner_text()
@@ -50,8 +50,28 @@ def collect(page, patent, work, args):
       c.querySelectorAll('h3,script,style,.noPrint,#languageSelectorContainer').forEach(e=>e.remove());
       return c.textContent.trim();
     }""")
-    if not page.locator("#inventorsRow").inner_text().strip() or not page.locator("#applicantsRow").inner_text().strip():
-        raise CollectionError("발명자/출원인 서지정보 누락")
+    missing = []
+    title = page.locator('#bookmarkTitle')
+    if not title.count():
+        title = page.locator('#pagebody > h3[lang="en"]')
+    title_text = title.first.inner_text().strip() if title.count() else ''
+    if not title_text or re.search(r'no title available', title_text, re.I):
+        missing.append('title')
+    for field, selector in (('inventors','#inventorsRow'), ('applicants','#applicantsRow')):
+        value = page.locator(selector)
+        if not value.count() or not value.inner_text().strip():
+            missing.append(field)
+    if not abstract.strip() or re.search(r'abstract not available', heading, re.I):
+        missing.append('english_abstract')
+    return abstract, tuple(missing)
+
+
+def collect(page, patent, work, args):
+    publication = open_record(page, patent, args)
+    abstract, missing = inspect_bibliography(page, publication)
+    if missing:
+        raise MetadataUnavailable(publication, page.url, missing,
+            page.get_by_role('link', name='Original document', exact=True).count()>0)
     biblio_url = page.url
     biblio = work / "biblio.pdf"
     print_biblio(page, "#pagebody", abstract, biblio)
@@ -65,6 +85,16 @@ def collect_original(page, patent, work, args):
     publication = open_record(page, patent, args)
     target, count, url = download_original(page, publication, work, args)
     return publication, target, count, url
+
+
+def collect_original_only(page, patent, work, args):
+    publication = open_record(page, patent, args)
+    _, missing = inspect_bibliography(page, publication)
+    biblio_url = page.url
+    target, count, url = download_original(page, publication, work, args)
+    return Collected(publication, None, target, count, 'Espacenet', biblio_url, url,
+        '원문 단독 수집; 영문 서지·초록이 결합된 완성 참증 아님; 공식 전문 URL·종별·전체 페이지 수 대조'
+        + ('; 화면 누락: '+', '.join(MetadataUnavailable.labels[k] for k in missing) if missing else ''), missing)
 
 
 def download_original(page, publication, work, args):

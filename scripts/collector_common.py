@@ -61,13 +61,14 @@ def trim_blank_print_tail(path):
 @dataclass
 class Collected:
     publication: object
-    biblio: Path
+    biblio: Path | None
     original: Path
     original_pages: int
     source: str
     biblio_url: str
     original_url: str
     verification: str
+    missing_fields: tuple = ()
 
 
 def english_abstract(text):

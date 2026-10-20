@@ -41,3 +41,8 @@ python scripts/build_references.py --text "KR20200137353A" --source kipris --nat
 
 저장소 루트를 `~/.codex/skills/patent-reference-builder`에 설치하면 스킬로 사용할 수 있습니다.
 Python 의존성 및 Chromium 설치 후 실행하세요. 원본 업무 파일·쿠키·브라우저 프로필·샘플 PDF는 배포하지 않습니다.
+
+서지·영문 초록 누락은 사이트 접근 오류와 구분하여 보고합니다. `--original-only`는 공식 원문을
+`원문만/`에 별도 저장하며 완성 참증 성공으로 집계하지 않습니다.
+J-PlatPat 기계번역은 사용자 명시적 허용 시에만 별도 보완 PDF로 만들며 원문이나 완성 참증과 섞지 않습니다.
+[자료 누락·보완자료 실행 방법](references/usage.md)을 참고하세요.

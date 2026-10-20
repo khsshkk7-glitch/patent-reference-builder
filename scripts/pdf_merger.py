@@ -25,6 +25,26 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def copy_original_unique(original, output, expected_pages):
+    """Keep a separately labelled original-only file byte-for-byte unchanged."""
+    reader = inspect_pdf(original)
+    if len(reader.pages) != expected_pages or expected_pages < 1:
+        raise ValueError('원문 페이지 수 불일치')
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    data = Path(original).read_bytes()
+    number = 1
+    while True:
+        candidate = output if number == 1 else output.with_name(f'{output.stem} ({number}){output.suffix}')
+        try:
+            with candidate.open('xb') as handle:
+                handle.write(data)
+            return candidate, dict(pages=expected_pages, biblio_pages=0,
+                original_pages=expected_pages, sha256=sha256(candidate))
+        except FileExistsError:
+            number += 1
+
+
 def merge(biblio, original, output, expected_original_pages):
     b, o = inspect_pdf(biblio), inspect_pdf(original)
     if len(o.pages) != expected_original_pages or expected_original_pages < 1:

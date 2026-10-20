@@ -116,6 +116,11 @@ python scripts/build_references.py --text "JP 2006-198019 A" --manifest verified
 
 ## 공식 참고 자료
 
+영문 서지·초록이 비어 있는 문헌은 CAPTCHA·접근 차단과 구분한다.
+`OFFICIAL_DATA_MISSING`이면 반복 인증 대신 누락 항목을 보고한다. 원문 단독 수집 및 명시적으로 허용한
+J-PlatPat 기계번역의 별도 보완자료는 [실행 방법](usage.md)의 절차를 따른다.
+기계번역을 검토 manifest의 정식 영문초록으로 표시하거나 완성 참증 성공으로 승격하지 않는다.
+
 - [Espacenet 서지사항 인쇄](https://worldwide.espacenet.com/patent/help/print-bibliographic-data-and-other-views)
 - [Espacenet 전문 다운로드](https://worldwide.espacenet.com/patent/help/originaldocumentdownloadfeature)
 - [EPO 릴리스 안내: 인용 시 원문 확인](https://www.epo.org/en/searching-for-patents/technical/espacenet/release-notes)

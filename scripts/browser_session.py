@@ -10,6 +10,19 @@ class CollectionError(RuntimeError):
     pass
 
 
+class MetadataUnavailable(CollectionError):
+    """Observed source gaps, not an access failure or permission to substitute."""
+    labels = {'title':'영문 명칭', 'inventors':'발명자', 'applicants':'출원인',
+              'english_abstract':'동일 공보 영문 초록'}
+    def __init__(self, publication, source_url, missing_fields, original_link_present):
+        self.diagnostics = [{'code':'OFFICIAL_DATA_MISSING', 'source':'Espacenet',
+            'publication':publication.key, 'source_url':source_url,
+            'missing_fields':list(missing_fields), 'original_link_present':original_link_present,
+            'original_download_verified':False}]
+        super().__init__('Espacenet 화면 자료 누락: '+', '.join(self.labels[k] for k in missing_fields)
+            +'. 완성 참증 생성 불가. 원문 링크 존재는 전문 다운로드 성공을 의미하지 않습니다.')
+
+
 class HumanRequired(CollectionError):
     pass
 
@@ -57,6 +70,12 @@ def browser_session(args):
                 if browser:
                     browser.close()
             elif native:
+                # The launcher may have handed off to its browser child. Close
+                # only this task's isolated browser before detaching CDP.
+                try:
+                    browser.new_browser_cdp_session().send('Browser.close')
+                except Exception:
+                    pass  # It may already have closed with its last page.
                 browser.close()
             # The attached user's browser and pre-existing tabs remain open.
 

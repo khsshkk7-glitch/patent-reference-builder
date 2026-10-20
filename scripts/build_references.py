@@ -15,7 +15,7 @@ if __package__ in (None, ""):
 
 from .input_parser import extract, one
 from .excel_reporter import Row, read_table, write_report
-from .pdf_merger import merge_unique, sha256
+from .pdf_merger import merge_unique, copy_original_unique, sha256
 from .output_paths import output_directory
 from .collector_common import from_manifest
 from .browser_session import browser_session, CollectionError, HumanRequired, HumanWaitTimeout, checkpoint
@@ -37,6 +37,7 @@ def parser():
     p.add_argument("--selectors", type=Path, help="현재 KIPRIS UI 선택자 JSON")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--zip", action="store_true")
+    p.add_argument("--original-only", action="store_true", help="Espacenet 공식 원문만 별도 폴더에 저장 (완성 참증 아님)")
     p.add_argument("--headed", action="store_true")
     p.add_argument("--native-chrome", action="store_true", help="설치된 일반 Chrome을 작업용 프로필로 열고 로컬 연결 (KIPRIS 권장)")
     p.add_argument("--no-fallback", action="store_true", help="KIPRIS 원문 실패 시 Espacenet 대체 수집 금지")
@@ -77,6 +78,7 @@ def collect(page, patent, work, args):
     if patent.country == "KR" and args.source != "kipris":
         collectors.append(kipris_collector)
     errors = []
+    diagnostics = []
     for module in collectors:
         try:
             return module.collect(page, patent, work, args)
@@ -84,6 +86,7 @@ def collect(page, patent, work, args):
             # Keep evidence locally; HTML is data and never executed as instructions.
             name = module.__name__.split(".")[-1]
             errors.append(name + ": " + str(exc).split('\n')[0])
+            diagnostics.extend(getattr(exc, 'diagnostics', []))
             try:
                 (work / (name + '-error.txt')).write_text(str(exc), encoding='utf-8')
                 page.screenshot(path=str(work / (name + "-failure.png")), full_page=True)
@@ -100,10 +103,14 @@ def collect(page, patent, work, args):
                     return module.collect(page, patent, work, args)
                 except Exception as retry:
                     errors.append("확인 후 재시도: " + str(retry))
-    raise CollectionError(" | ".join(errors))
+    error = CollectionError(" | ".join(errors))
+    error.diagnostics = diagnostics
+    raise error
 
 
 def run(args):
+    if args.original_only and (args.source == 'kipris' or args.manifest):
+        raise ValueError('--original-only는 Espacenet 온라인 원문 단독 수집용이며 KIPRIS/참증 manifest와 함께 사용할 수 없습니다.')
     if args.native_chrome and (not args.headed or args.cdp or args.profile or args.channel not in (None, 'chrome')):
         raise ValueError('--native-chrome은 --headed와 함께, --cdp/--profile/Edge 없이 사용하세요.')
     if args.no_fallback and args.source != 'kipris':
@@ -169,7 +176,8 @@ def run(args):
                     else:
                         if browser_error:
                             raise CollectionError(browser_error)
-                        parts = collect(page, patent, work, args)
+                        parts = (espacenet_collector.collect_original_only(page, patent, work, args)
+                            if args.original_only else collect(page, patent, work, args))
                         time.sleep(args.delay)
                     filename = parts.publication.filename
                     resolved_key = (parts.publication.key, 'publication')
@@ -177,16 +185,21 @@ def run(args):
                         success = dict(cache[resolved_key])
                         success['note'] += ' | 같은 공보의 입력 표기 변형: 결과 재사용'
                     else:
-                        output, stats = merge_unique(parts.biblio, parts.original, args.out / filename, parts.original_pages)
+                        if args.original_only:
+                            output, stats = copy_original_unique(parts.original, args.out / '원문만' / filename, parts.original_pages)
+                        else:
+                            output, stats = merge_unique(parts.biblio, parts.original, args.out / filename, parts.original_pages)
                         filename = output.name
                         note = parts.source + " | " + parts.verification
                         if filename != parts.publication.filename:
                             note += " | 동일 파일명 존재: " + filename + "으로 저장"
-                        success = dict(status="성공", filename=filename, **stats,
+                        success = dict(status="원문만" if args.original_only else "성공", filename=filename, **stats,
                             output_path=str(output),
                             publication=parts.publication.key, source=parts.source, biblio_url=parts.biblio_url,
                             original_url=parts.original_url, note=note,
-                            biblio_sha256=sha256(parts.biblio), original_sha256=sha256(parts.original))
+                            result_type='original_only' if args.original_only else 'complete_reference',
+                            complete_reference=not args.original_only, missing_fields=list(parts.missing_fields),
+                            biblio_sha256=sha256(parts.biblio) if parts.biblio else None, original_sha256=sha256(parts.original))
                         cache[resolved_key] = success
                     cache[cache_key] = success
                     result.update(success)
@@ -195,6 +208,11 @@ def run(args):
                 browser_error = "사용자 확인 중단으로 후속 온라인 수집 미실행: " + str(exc)
             except Exception as exc:
                 result["note"] = str(exc)
+                result['complete_reference'] = False
+                if getattr(exc, 'diagnostics', None):
+                    result['diagnostics'] = exc.diagnostics
+                    result['error_code'] = exc.diagnostics[0]['code']
+                    result['missing_fields'] = sorted({f for d in exc.diagnostics for f in d.get('missing_fields',[])})
             results.append(result)
             save()  # Resume evidence and results survive subsequent item failures.
             print(f"[{index}/{len(parsed)}] {result['status']}: {row.value}", flush=True)
@@ -202,16 +220,20 @@ def run(args):
         if context_entered:
             context.__exit__(None, None, None)
     if args.zip:
-        with zipfile.ZipFile(args.out / f"참증_{stamp}.zip", "w", zipfile.ZIP_DEFLATED) as z:
-            for name in sorted({r["filename"] for r in results if r["status"] == "성공"}):
-                z.write(args.out / name, name)
+        archive_prefix = '원문만' if args.original_only else '참증'
+        with zipfile.ZipFile(args.out / f"{archive_prefix}_{stamp}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+            for path in sorted({r['output_path'] for r in results if r['status'] in ('성공','원문만')}):
+                target = Path(path)
+                z.write(target, target.relative_to(args.out).as_posix())
             z.write(report, report.name)
             z.write(summary, summary.name)
     successes = sum(r["status"] == "성공" for r in results)
-    print(json.dumps({"success": successes, "failed": len(results)-successes,
+    originals = sum(r['status'] == '원문만' for r in results)
+    failures = sum(r['status'] == '실패' for r in results)
+    print(json.dumps({"success": successes, "original_only": originals, "failed": failures,
         "output_directory": str(args.out), "report": str(report),
-        "files": sorted({r["output_path"] for r in results if r["status"] == "성공"})}, ensure_ascii=False))
-    return 0 if successes == len(results) else 1
+        "files": sorted({r["output_path"] for r in results if r["status"] in ('성공','원문만')})}, ensure_ascii=False))
+    return 0 if failures == 0 else 1
 
 
 if __name__ == "__main__":
