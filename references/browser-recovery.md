@@ -120,6 +120,8 @@ python scripts/build_references.py --text "JP 2006-198019 A" --manifest verified
 `OFFICIAL_DATA_MISSING`이면 반복 인증 대신 누락 항목을 보고한다. 원문 단독 수집 및 명시적으로 허용한
 J-PlatPat 기계번역의 별도 보완자료는 [실행 방법](usage.md)의 절차를 따른다.
 기계번역을 검토 manifest의 정식 영문초록으로 표시하거나 완성 참증 성공으로 승격하지 않는다.
+현재 AI 번역 기본 보완 절차는 [AI 보완](ai-fallback.md)을 따른다. 동일 공보 원문을 읽고 검토한 AI manifest를
+별도 입력하며, AI 표시가 있는 앞장과 원문을 병합해 공식 영문 자료와 구분된 결과로 전달한다.
 
 - [Espacenet 서지사항 인쇄](https://worldwide.espacenet.com/patent/help/print-bibliographic-data-and-other-views)
 - [Espacenet 전문 다운로드](https://worldwide.espacenet.com/patent/help/originaldocumentdownloadfeature)

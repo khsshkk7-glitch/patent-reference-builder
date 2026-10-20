@@ -34,6 +34,7 @@ def parser():
     p.add_argument("--role", choices=["publication", "application"], default="publication")
     p.add_argument("--source", choices=["auto", "espacenet", "kipris"], default="auto")
     p.add_argument("--manifest", type=Path, help="검토된 로컬 PDF 및 출처 manifest JSON")
+    p.add_argument('--ai-manifest', type=Path, help='AI가 원문 대조·번역 검토한 보완 manifest (공식 초록과 별도 상태)')
     p.add_argument("--selectors", type=Path, help="현재 KIPRIS UI 선택자 JSON")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--zip", action="store_true")
@@ -109,6 +110,8 @@ def collect(page, patent, work, args):
 
 
 def run(args):
+    if args.ai_manifest and (args.original_only or args.manifest):
+        raise ValueError('--ai-manifest는 --original-only/--manifest와 함께 사용할 수 없습니다.')
     if args.original_only and (args.source == 'kipris' or args.manifest):
         raise ValueError('--original-only는 Espacenet 온라인 원문 단독 수집용이며 KIPRIS/참증 manifest와 함께 사용할 수 없습니다.')
     if args.native_chrome and (not args.headed or args.cdp or args.profile or args.channel not in (None, 'chrome')):
@@ -125,6 +128,7 @@ def run(args):
     if not rows:
         raise ValueError('처리할 특허번호가 없습니다.')
     manifest = load_json(args.manifest)
+    ai_manifest = load_json(args.ai_manifest)
     args.selectors = load_json(args.selectors)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     run_dir = args.out / "work" / stamp
@@ -148,7 +152,7 @@ def run(args):
     def save():
         summary.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         write_report(report, sheets, layouts, results)
-    need_browser = any(p and p.key not in manifest for _, p, _ in parsed)
+    need_browser = any(p and p.key not in manifest and p.key not in ai_manifest for _, p, _ in parsed)
     context = browser_session(args) if need_browser else nullcontext(None)
     browser_error = None
     context_entered = False
@@ -171,7 +175,10 @@ def run(args):
                 else:
                     work = run_dir / f"{index:05d}-{patent.key}"
                     work.mkdir()
-                    if patent.key in manifest:
+                    if patent.key in ai_manifest:
+                        from .ai_fallback import from_ai_packet
+                        parts = from_ai_packet(patent, ai_manifest[patent.key], args.ai_manifest.parent, work)
+                    elif patent.key in manifest:
                         parts = from_manifest(patent, manifest[patent.key], args.manifest.parent)
                     else:
                         if browser_error:
@@ -193,12 +200,15 @@ def run(args):
                         note = parts.source + " | " + parts.verification
                         if filename != parts.publication.filename:
                             note += " | 동일 파일명 존재: " + filename + "으로 저장"
-                        success = dict(status="원문만" if args.original_only else "성공", filename=filename, **stats,
+                        ai_mode = parts.translation_type in ('ai_translation','ai_summary')
+                        ai_status = 'AI 번역 보완' if parts.translation_type == 'ai_translation' else 'AI 요약 보완'
+                        success = dict(status="원문만" if args.original_only else (ai_status if ai_mode else "성공"), filename=filename, **stats,
                             output_path=str(output),
                             publication=parts.publication.key, source=parts.source, biblio_url=parts.biblio_url,
                             original_url=parts.original_url, note=note,
-                            result_type='original_only' if args.original_only else 'complete_reference',
-                            complete_reference=not args.original_only, missing_fields=list(parts.missing_fields),
+                            result_type='original_only' if args.original_only else ('ai_assisted_reference' if ai_mode else 'complete_reference'),
+                            complete_reference=not args.original_only and not ai_mode, missing_fields=list(parts.missing_fields),
+                            translation_type=parts.translation_type, ai_provenance=parts.ai_provenance,
                             biblio_sha256=sha256(parts.biblio) if parts.biblio else None, original_sha256=sha256(parts.original))
                         cache[resolved_key] = success
                     cache[cache_key] = success
@@ -220,19 +230,20 @@ def run(args):
         if context_entered:
             context.__exit__(None, None, None)
     if args.zip:
-        archive_prefix = '원문만' if args.original_only else '참증'
+        archive_prefix = '원문만' if args.original_only else ('AI보완참증' if ai_manifest else '참증')
         with zipfile.ZipFile(args.out / f"{archive_prefix}_{stamp}.zip", "w", zipfile.ZIP_DEFLATED) as z:
-            for path in sorted({r['output_path'] for r in results if r['status'] in ('성공','원문만')}):
+            for path in sorted({r['output_path'] for r in results if r.get('output_path') and r['status'] != '실패'}):
                 target = Path(path)
                 z.write(target, target.relative_to(args.out).as_posix())
             z.write(report, report.name)
             z.write(summary, summary.name)
     successes = sum(r["status"] == "성공" for r in results)
     originals = sum(r['status'] == '원문만' for r in results)
+    ai_assisted = sum(r.get('result_type') == 'ai_assisted_reference' for r in results)
     failures = sum(r['status'] == '실패' for r in results)
-    print(json.dumps({"success": successes, "original_only": originals, "failed": failures,
+    print(json.dumps({"success": successes, "original_only": originals, 'ai_assisted':ai_assisted, "failed": failures,
         "output_directory": str(args.out), "report": str(report),
-        "files": sorted({r["output_path"] for r in results if r["status"] in ('성공','원문만')})}, ensure_ascii=False))
+        "files": sorted({r["output_path"] for r in results if r.get('output_path') and r['status'] != '실패'})}, ensure_ascii=False))
     return 0 if failures == 0 else 1
 
 

@@ -44,7 +44,8 @@ KPA 인쇄본 + 같은 공보의 Espacenet 원문으로 자동 복구하며, Esp
 변경·리디렉션된 Downloads 위치를 조회한다. Linux는 XDG_DOWNLOAD_DIR 설정, macOS는 ~/Downloads를 사용한다.
 Windows 위치 조회가 실패하면 오류를 알리고 `--out`으로 명시하도록 하며 임의 폴더로 저장하지 않는다.
 다른 위치를 원하면 `--out "/absolute/path/folder"`로 지정한다.
-`work/`에는 원본 조각과 실패 화면이 남는다. ZIP은 이번 실행에서 성공한 PDF와 보고서만 포함한다.
+`work/`에는 원본 조각과 실패 화면이 남는다. ZIP은 이번 실행의 완료 PDF와 보고서만 포함한다.
+AI 보완 결과와 명시적으로 요청한 원문 단독 결과도 상태를 구분해 포함하며 실패 파일은 넣지 않는다.
 중복 행은 별도 행으로 보고하지만 같은 PDF를 재사용한다. 이전 실행의 동일 파일명이 있으면
 `특허번호 (2).pdf`, `(3).pdf` 순서로 새 파일을 만든다. 기존 파일은 보존한다.
 결과 JSON의 `output_path`와 종료 요약의 `files`는 실제 최종 파일의 절대 경로다.
@@ -105,3 +106,11 @@ python scripts/jplatpat_supplement.py --text JP3102826U --source-url https://www
 `기계번역 보완자료/JP 3102826 U.pdf`에 `MACHINE-TRANSLATED SUPPLEMENT — NOT A COMPLETE REFERENCE`를 표시한다.
 별도 JSON은 `status=보완자료`, `complete_reference=false`이며 일반 참증 병합에 사용하지 않는다.
 미번역·대표도면 로드 실패는 중단하고 근거 화면을 보존한다. JP3102826U 외 문헌은 개별 검증이 필요하다.
+
+## AI 번역·요약을 원문과 병합
+
+현재 스킬은 영문 초록을 못 찾으면 Codex가 같은 공보 원문 초록을 번역해 보완한다.
+원문 초록도 없으면 AI 작성 요약으로 구분한다. [AI 보완 작성·검토 JSON 및 배치 명령](ai-fallback.md)을 따른다.
+결과는 `AI 번역 보완`/`AI 요약 보완`, `ai_assisted_reference`이며 공식 자료 성공 건수와 별도로 집계한다.
+보고서의 `complete_reference=false`는 공식 영문 자료가 모두 갖춰진 참증이 아니라는 뜻이며,
+AI 표시 표지와 공식 원문 전문이 병합된 최종 PDF는 정상적으로 생성해 전달한다.

@@ -69,6 +69,8 @@ class Collected:
     original_url: str
     verification: str
     missing_fields: tuple = ()
+    translation_type: str = 'official'
+    ai_provenance: dict | None = None
 
 
 def english_abstract(text):
