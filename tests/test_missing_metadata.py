@@ -22,6 +22,17 @@ HTML='''<div id="pagebody"><h1>Bibliographic data: JP3102826 (U)</h1>
 
 
 class MissingMetadata(TestCase):
+    def test_korean_abstract_is_source_material_not_an_english_abstract(self):
+        pub=one('KR200355113Y1')
+        text='본 고안은 장롱의 내부 공간을 구획하는 선반의 저면에 설치된 가이드레일과 서랍에 관한 것이다. 선반 사이의 사용되지 않는 공간을 활용하고 작은 물품을 잘 보이도록 수납한다. '
+        html=HTML.replace('JP3102826 (U)','KR200355113 (Y1)').replace('Abstract not available for','Abstract of').replace('</h3></div>', '</h3><p>'+text+'</p></div>')
+        with sync_playwright() as pw, TemporaryDirectory() as tmp:
+            browser=pw.chromium.launch();page=browser.new_page();page.set_content(html)
+            with patch('scripts.espacenet_collector.open_record',return_value=pub):
+                with self.assertRaises(MetadataUnavailable) as error:collect(page,pub,Path(tmp),None)
+            self.assertIn('english_abstract',error.exception.diagnostics[0]['missing_fields'])
+            browser.close()
+
     def test_utility_model_lists_every_gap_and_does_not_create_reference(self):
         with sync_playwright() as pw, TemporaryDirectory() as tmp:
             browser=pw.chromium.launch();page=browser.new_page()

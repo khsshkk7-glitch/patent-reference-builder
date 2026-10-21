@@ -12,6 +12,7 @@ from .pdf_merger import inspect_pdf, sha256
 LABELS = {
     'ai_translation': ('AI TRANSLATION - NOT AN OFFICIAL ENGLISH ABSTRACT', 'AI 번역 보완'),
     'ai_summary': ('AI-GENERATED SUMMARY - NOT AN OFFICIAL ABSTRACT', 'AI 요약 보완'),
+    'site_machine_translation': ('SITE MACHINE TRANSLATION - EPO PATENT TRANSLATE', '사이트 기계번역 보완'),
 }
 
 
@@ -22,11 +23,19 @@ def validate_packet(requested, entry, base):
     resolve(requested, [publication])
     mode = entry.get('translation_type')
     if mode not in LABELS:
-        raise CollectionError('AI 번역/요약 구분이 필요합니다.')
+        raise CollectionError('AI 번역/요약 또는 사이트 기계번역 구분이 필요합니다.')
     has_abstract = entry.get('source_abstract_available')
-    if (mode == 'ai_translation' and (has_abstract is not True or entry.get('source_kind') != 'abstract')) or (
+    if (mode in ('ai_translation','site_machine_translation') and (has_abstract is not True or entry.get('source_kind') != 'abstract')) or (
         mode == 'ai_summary' and (has_abstract is not False or entry.get('source_kind') != 'description')):
         raise CollectionError('원문 초록 유무와 AI 번역/요약 종류가 일치하지 않습니다.')
+    if mode == 'site_machine_translation':
+        url = urlparse(entry.get('site_translation_url',''))
+        query = parse_qs(url.query)
+        if url.scheme!='https' or url.netloc!='translationportal.epo.org' or any(query.get(k)!=[v] for k,v in (
+            ('COUNTRY',publication.country),('NUMBER',publication.number),('KIND',publication.kind),('TRGLANG','en'))):
+            raise CollectionError('Patent Translate 출처의 공보번호·종별·영어 대상 언어 불일치')
+        if query.get('apikey') or 'machine-generated' not in entry.get('site_translation_notice','') or entry.get('site_translation_verified') is not True:
+            raise CollectionError('사이트 번역 고지·직접 확인 기록 누락 또는 불필요한 키 포함')
     for key in ('identity_verified', 'full_document_verified', 'source_text_verified', 'translation_reviewed'):
         if entry.get(key) is not True:
             raise CollectionError('AI 보완 검토 기록 누락: '+key)
@@ -81,12 +90,17 @@ def render_front(entry, original, output):
     small = ParagraphStyle('small', parent=style, fontSize=7, leading=9)
     heading = ParagraphStyle('heading', parent=style, fontName='Helvetica-Bold', fontSize=11, leading=14)
     para = lambda text, s=style: Paragraph(escape(text).replace('\n','<br/>'), s)
-    story = [para(label, heading), para('AI-prepared bibliographic sheet. The English text below is not supplied or certified by a patent office.', small), Spacer(1,3*mm)]
+    site = entry['translation_type']=='site_machine_translation'
+    info = ('Bibliography: AI translations/romanizations of the original. Abstract: site-provided EPO Patent Translate (Google); not AI-authored.' if site else 'AI-prepared bibliographic sheet. The English text below is not supplied or certified by a patent office.')
+    story = [para(label, heading), para(info, small), Spacer(1,3*mm)]
     rows = [[para(k), para(v)] for k,v in entry['bibliography']]
     table = Table(rows, colWidths=[43*mm,135*mm], hAlign='LEFT')
     table.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('BACKGROUND',(0,0),(0,-1),colors.HexColor('#eef1f4')),
         ('LINEBELOW',(0,0),(-1,-1),0.3,colors.HexColor('#ccd1d6')),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5)]))
-    story += [table, Spacer(1,4*mm), para('AI-translated abstract' if entry['translation_type']=='ai_translation' else 'AI-generated English summary',heading), para(entry['english_abstract'])]
+    abstract_heading = 'Site-provided machine-translated abstract' if site else ('AI-translated abstract' if entry['translation_type']=='ai_translation' else 'AI-generated English summary')
+    story += [table, Spacer(1,4*mm), para(abstract_heading,heading), para(entry['english_abstract'])]
+    if site:
+        story += [para(entry['site_translation_notice'],small),para('Translation source: '+entry['site_translation_url'],small)]
     if entry.get('figure'):
         import pypdfium2 as pdfium
         doc = pdfium.PdfDocument(original)
@@ -97,7 +111,7 @@ def render_front(entry, original, output):
         crop = image.crop((int(x0*image.width),int(y0*image.height),int(x1*image.width),int(y1*image.height)))
         fig = output.with_suffix('.figure.png')
         crop.save(fig)
-        width = min(65*mm, crop.width)
+        width = min(65*mm, 70*mm*crop.width/crop.height)
         height = width*crop.height/crop.width
         story += [Spacer(1,2*mm), para('Representative drawing (unaltered crop of the original)',small), Image(str(fig), width=width,height=height,hAlign='LEFT')]
         page.close(); doc.close()
@@ -114,6 +128,8 @@ def render_front(entry, original, output):
     printed = ''.join(p.extract_text() or '' for p in reader.pages)
     if normalize(entry['english_abstract']) not in normalize(printed) or label not in printed:
         raise CollectionError('AI 인쇄본에 전체 번역문 또는 고지 누락')
+    if site and normalize(entry['site_translation_notice']) not in normalize(printed):
+        raise CollectionError('Patent Translate 인쇄본의 기계번역 고지 누락')
 
 
 def from_ai_packet(requested, entry, base, work):
@@ -125,5 +141,8 @@ def from_ai_packet(requested, entry, base, work):
         'source_text','english_abstract','official_english_unavailable_reason','review_note')}
     provenance['bibliography'] = entry['bibliography']
     provenance['bibliography_note'] = entry.get('bibliography_note','')
-    return Collected(publication,biblio,original,count,entry['original_source']+' + AI',entry['original_url'],entry['original_url'],
+    if mode=='site_machine_translation':
+        provenance.update({k:entry[k] for k in ('site_translation_url','site_translation_notice','site_translation_verified')})
+    source_suffix = ' + EPO Patent Translate / AI bibliography' if mode=='site_machine_translation' else ' + AI'
+    return Collected(publication,biblio,original,count,entry['original_source']+source_suffix,entry.get('site_translation_url',entry['original_url']),entry['original_url'],
         LABELS[mode][1]+'; 공식 영문 초록 아님; 동일 공보 원문 근거 대조; '+entry['review_note'],(),mode,provenance)

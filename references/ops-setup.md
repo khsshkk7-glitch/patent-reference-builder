@@ -18,8 +18,9 @@ KIPRIS 직접 수집은 기존 방식이다. 따라서 계정 발급만으로 �
 2. 계정 유형은 무료 사용을 원하면 **Non-paying**을 선택한다. 유료 이용을 자동 신청하지 않는다.
    [EPO 안내](https://www.epo.org/en/searching-for-patents/data/web-services/ops)에 따르면 비유료 한도는 주 4GB다.
    현재 포털 조건을 확인하며 계정 승인·활성화 안내를 기다린다. 승인 시간을 임의로 약속하지 않는다.
-3. 승인 후 개발자 포털에 로그인하여 앱을 정의하고 **Consumer Key / Consumer Secret**을 발급받는다.
-   로그인 후 메뉴명은 실제 포털 화면에서 확인한다. 키·Secret을 채팅·GitHub 이슈에 붙여 넣지 않는다.
+3. 승인 메일 수신 후 [개발자 포털 로그인](https://developers.epo.org/user/login) → **My Apps**에서 앱을 정의하고
+   **Consumer Key / Consumer Secret**을 발급받는다. 공식 OPS 3.2 매뉴얼의 Client credentials 절차에 따른다.
+   앱 이름은 예를 들어 `patent-reference-builder`로 지정할 수 있다. 키·Secret을 채팅·GitHub 이슈에 붙여 넣지 않는다.
 4. 발급 후 아래 실행 도우미를 로컬 터미널에서 실행한다. 두 값을 숨김 입력받아 이번 프로세스에서만 사용하며 파일로 저장하지 않는다.
 
 ```sh

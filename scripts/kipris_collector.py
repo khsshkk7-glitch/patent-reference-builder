@@ -107,6 +107,13 @@ def collect(page, patent, work, args):
     number = national_number(patent)
     page.locator('#queryText').fill(number)
     page.get_by_role('button', name='검색', exact=True).click()
+    page.wait_for_function('''() => {
+      const result=document.querySelector('#resultSection');
+      return result && (result.querySelector('article') ||
+        (result.querySelector('.nodata-area') && result.innerText.includes('검색결과가 없습니다')));
+    }''')
+    if page.locator('#resultSection .nodata-area').count():
+        raise CollectionError(f'KPA에서 {number}의 검색결과가 없습니다. 다른 공보로 대체하지 않고 동일 공보 원문·AI 보완 경로를 확인하세요.')
     page.locator('#resultSection article').first.wait_for(state='visible')
     candidates = []
     articles = page.locator('#resultSection article')

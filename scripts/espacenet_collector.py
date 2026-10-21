@@ -2,7 +2,7 @@
 import re
 from urllib.parse import urljoin, urlparse, parse_qs
 from .input_parser import extract, resolve
-from .collector_common import Collected, print_biblio
+from .collector_common import Collected, print_biblio, english_abstract
 from .pdf_merger import inspect_pdf
 from .browser_session import CollectionError, MetadataUnavailable, HumanRequired, HumanWaitTimeout, navigate
 from .download_wait import wait_for_download
@@ -63,6 +63,12 @@ def inspect_bibliography(page, publication):
             missing.append(field)
     if not abstract.strip() or re.search(r'abstract not available', heading, re.I):
         missing.append('english_abstract')
+    else:
+        try:
+            english_abstract(abstract)
+        except CollectionError:
+            # A Korean abstract is source material, not an English abstract.
+            missing.append('english_abstract')
     return abstract, tuple(missing)
 
 

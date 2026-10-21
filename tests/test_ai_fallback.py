@@ -68,6 +68,27 @@ class AiFallbackTests(unittest.TestCase):
         with zipfile.ZipFile(next(out.glob('AI보완참증_*.zip'))) as archive:
             self.assertEqual(sum(n.endswith('.pdf') for n in archive.namelist()),1)
 
+    def test_patent_translate_stays_site_translation_and_preserves_notice(self):
+        entry=dict(self.entry,translation_type='site_machine_translation',site_translation_verified=True,
+            site_translation_url='https://translationportal.epo.org/emtp/translate/?COUNTRY=JP&NUMBER=3102826&KIND=U&TRGLANG=en',
+            site_translation_notice='Notice\nThis translation is machine-generated.')
+        with self.assertRaises(CollectionError):
+            validate_packet(self.pub,dict(entry,site_translation_url=entry['site_translation_url'].replace('KIND=U','KIND=B')),self.root)
+        manifest=self.root/'site.json';manifest.write_text(json.dumps({self.pub.key:entry}),encoding='utf-8')
+        out=self.root/'site-out'
+        args=parser().parse_args(['--text',self.pub.key,'--ai-manifest',str(manifest),'--out',str(out),'--zip'])
+        with patch('scripts.build_references.browser_session',side_effect=AssertionError('Local verified packet')):
+            self.assertEqual(run(args),0)
+        record=json.loads(next(out.glob('처리결과_*.json')).read_text(encoding='utf-8'))[0]
+        self.assertEqual(record['status'],'사이트 기계번역 보완')
+        self.assertFalse(record['complete_reference'])
+        self.assertNotIn('english_abstract',record['ai_provenance'])
+        self.assertEqual(record['site_translation_provenance']['english_abstract'],entry['english_abstract'])
+        text=''.join(p.extract_text() for p in inspect_pdf(record['output_path']).pages)
+        self.assertIn('This translation is machine-generated.',text)
+        self.assertNotIn('AI-translated abstract',text)
+        self.assertTrue(list(out.glob('번역보완참증_*.zip')))
+
 
 if __name__ == '__main__':
     unittest.main()
