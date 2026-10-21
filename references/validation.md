@@ -210,3 +210,11 @@ python -m unittest discover -s tests -v
 python scripts/build_references.py --text "JP 2006-198019 A" --out output/live-jp --headed --channel chrome --interactive --human-timeout 300
 python scripts/build_references.py --text "KR 10-2020-0137353" --source kipris --out output/live-kr --headed
 ```
+# 2026-10-21 — KPA 미수록 국내 실용신안 복구
+
+- KR200355113Y1에서 KPA 0건이어도 국내 검색으로 전환하여 등록번호 2003551130000과 공고전문 Y1을 확인한다. 실제 공식 뷰어 5페이지/수신 PDF 5페이지 일치.
+- 등록 종별 B/Y는 공고·등록전문 및 등록번호 0000 접미를 사용하고, 원문 표지 종별 검사에 U/Y도 포함했다. 원문과 다른 종류를 임의 선택하지 않는다.
+- 국내 서지·한글 초록·원문·표지 추출문과 미검토 translation-review.json을 보존한다. CLI는 이를 실패/완성 성공과 구분해 `번역 검토 대기`, `translation_pending`, `review_packet`으로 기록한다. 단독 Python 명령은 AI를 호출하지 않는다. Codex가 원문 대조와 영어 번역을 완료한 뒤 --ai-manifest로 재개한다.
+- 실제 수집본을 원문 대조하고 기존에 직접 확인한 동일 공보 Patent Translate 영어 초록을 그대로 사용하여 최종 1+5=6페이지 PDF를 Downloads에 생성했다. 앞장 시각 검수와 원문 5페이지의 병합 전후 디코딩 콘텐츠 일치를 확인했다.
+- 고안자는 KIPRIS 원문과 국내 상세의 임창빈으로 재확인했다. 이전 앞장 Wi Chang-byeon은 오독이며 Im Chang-bin (공식 영문 미확인 로마자 표기)으로 정정했다.
+- 테스트 68개 중 67개 통과, 개인 샘플 1개 생략; skill-creator 검증 통과. 전체 실용신안 공보 또는 OPS 인증 다운로드의 완전 자동화 검증을 뜻하지 않는다.

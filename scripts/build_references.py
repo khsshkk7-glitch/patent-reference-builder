@@ -85,6 +85,8 @@ def collect(page, patent, work, args):
         try:
             return module.collect(page, patent, work, args)
         except Exception as exc:
+            if isinstance(exc, kipris_collector.TranslationRequired):
+                raise  # Preserve the collected original and exact resume packet.
             # Keep evidence locally; HTML is data and never executed as instructions.
             name = module.__name__.split(".")[-1]
             errors.append(name + ": " + str(exc).split('\n')[0])
@@ -226,6 +228,11 @@ def run(args):
             except HumanWaitTimeout as exc:
                 result['note'] = str(exc)
                 browser_error = "사용자 확인 중단으로 후속 온라인 수집 미실행: " + str(exc)
+            except kipris_collector.TranslationRequired as exc:
+                result.update(status='번역 검토 대기', complete_reference=False,
+                    note=str(exc), diagnostics=exc.diagnostics,
+                    error_code='TRANSLATION_REVIEW_REQUIRED',
+                    review_packet=exc.diagnostics[0]['review_packet'])
             except Exception as exc:
                 result["note"] = str(exc)
                 result['complete_reference'] = False
@@ -255,10 +262,11 @@ def run(args):
     ai_assisted = sum(r.get('result_type') == 'ai_assisted_reference' for r in results)
     site_translated = sum(r.get('result_type') == 'site_machine_translated_reference' for r in results)
     failures = sum(r['status'] == '실패' for r in results)
+    pending = sum(r['status'] == '번역 검토 대기' for r in results)
     print(json.dumps({"success": successes, "original_only": originals, 'ai_assisted':ai_assisted, 'site_translated':site_translated, "failed": failures,
-        "output_directory": str(args.out), "report": str(report),
+        "translation_pending": pending, "output_directory": str(args.out), "report": str(report),
         "files": sorted({r["output_path"] for r in results if r.get('output_path') and r['status'] != '실패'})}, ensure_ascii=False))
-    return 0 if failures == 0 else 1
+    return 0 if failures == 0 and pending == 0 else 1
 
 
 if __name__ == "__main__":

@@ -92,7 +92,7 @@ def safe_cell(cell, value):
 def write_report(path, sheets, layouts, results):
     wb = Workbook()
     wb.remove(wb.active)
-    headers = ["처리결과(공식/기계번역/AI/원문/실패)", "생성된 PDF 파일명", "총 페이지 수", "비고(실패 사유 또는 출처 사이트)"]
+    headers = ["처리결과(공식/기계번역/AI/원문/대기/실패)", "생성된 PDF 파일명", "총 페이지 수", "비고(실패 사유 또는 출처 사이트)"]
     for name, values in sheets.items():
         ws = wb.create_sheet(name)
         h, width = layouts.get(name, (0, max((len(v) for v in values), default=0)))

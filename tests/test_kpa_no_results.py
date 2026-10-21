@@ -2,6 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import TestCase
+from unittest.mock import patch
 from playwright.sync_api import sync_playwright
 from scripts.kipris_collector import collect
 from scripts.browser_session import CollectionError
@@ -17,7 +18,9 @@ class KpaNoResults(TestCase):
             browser=pw.chromium.launch();page=browser.new_page();page.set_default_timeout(3000)
             page.route('**/*',lambda route:route.fulfill(body=html,content_type='text/html; charset=utf-8'))
             args=SimpleNamespace(selectors={},retries=1)
-            with self.assertRaisesRegex(CollectionError,'KPA에서 200355113의 검색결과가 없습니다'):
-                collect(page,one('KR200355113Y1'),Path(tmp),args)
+            # Absence of English KPA must route to domestic evidence collection.
+            with patch('scripts.kipris_collector.collect_domestic_for_translation', return_value='domestic-review') as fallback:
+                self.assertEqual(collect(page,one('KR200355113Y1'),Path(tmp),args), 'domestic-review')
+                fallback.assert_called_once()
             self.assertFalse(list(Path(tmp).glob('*.pdf')))
             browser.close()

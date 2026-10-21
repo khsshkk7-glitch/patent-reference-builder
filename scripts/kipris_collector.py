@@ -71,7 +71,7 @@ def national_number(patent):
 
 def domestic_number_matches(text, number, kind):
     # KIPRIS domestic registration numbers append a four-digit serial suffix.
-    suffix = r'(?:0000)?' if kind.startswith('B') else ''
+    suffix = r'(?:0000)?' if kind.startswith(('B', 'Y')) else ''
     return bool(re.search(r'(?<!\d)' + re.escape(number) + suffix + r'(?!\d)', text))
 
 
@@ -113,7 +113,7 @@ def collect(page, patent, work, args):
         (result.querySelector('.nodata-area') && result.innerText.includes('검색결과가 없습니다')));
     }''')
     if page.locator('#resultSection .nodata-area').count():
-        raise CollectionError(f'KPA에서 {number}의 검색결과가 없습니다. 다른 공보로 대체하지 않고 동일 공보 원문·AI 보완 경로를 확인하세요.')
+        return collect_domestic_for_translation(page, patent, work, args)
     page.locator('#resultSection article').first.wait_for(state='visible')
     candidates = []
     articles = page.locator('#resultSection article')
@@ -184,12 +184,18 @@ def collect_domestic(page, publication, application_number, number, biblio, bibl
         raise CollectionError('KPA에 대응하는 국내 출원기록이 단일하지 않습니다.')
     match.get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
     pane = page.locator('#mainResultDetail')
-    label = '등록번호(일자)' if publication.kind.startswith('B') else '공개번호(일자)'
+    return download_domestic_pane(page, publication, number, biblio, biblio_url, work)
+
+
+def download_domestic_pane(page, publication, number, biblio, biblio_url, work):
+    pane = page.locator('#mainResultDetail')
+    registered = publication.kind.startswith(('B', 'Y'))
+    label = '등록번호(일자)' if registered else '공개번호(일자)'
     domestic = pane.locator('tr').filter(has=page.get_by_role('rowheader', name=label, exact=True))
     domestic.wait_for(state='visible')
     if not domestic_number_matches(domestic.inner_text(), number, publication.kind):
         raise CollectionError('국내 원문 공보번호가 KPA와 일치하지 않습니다.')
-    pane.get_by_role('button', name=re.compile(r'^(?:공고|등록)전문$') if publication.kind.startswith('B') else '공개전문', exact=True).click()
+    pane.get_by_role('button', name=re.compile(r'^(?:공고|등록)전문$') if registered else '공개전문', exact=True).click()
     iframe = pane.locator('iframe')
     iframe.wait_for(state='attached')
     src = iframe.get_attribute('src')
@@ -230,8 +236,78 @@ def collect_domestic(page, publication, application_number, number, biblio, bibl
     display_number = '10-' + publication.number[:4] + '-' + publication.number[4:] if len(publication.number)==11 else publication.number[:2]+'-'+publication.number[2:]
     if cover.strip() and display_number not in compact and number not in compact:
         raise CollectionError('원문 표지 번호가 요청한 공보와 일치하지 않습니다.')
-    kinds = re.findall(r'공보\s*\(\s*([AB]\d*)\s*\)', cover)
+    kinds = re.findall(r'공보\s*\(\s*([ABUY]\d*)\s*\)', cover)
     if kinds and publication.kind not in kinds:
         raise CollectionError('원문 표지의 공개/등록 종류 코드가 요청과 일치하지 않습니다.')
     return Collected(publication, biblio, original, count, 'KIPRIS', biblio_url, page.url,
         'KPA 공고번호·출원번호로 국내 공보 연결, 전문 뷰어 전체 페이지 수 대조; 최종 시각 검수 필요')
+
+
+class TranslationRequired(CollectionError):
+    """Original and Korean evidence are ready; never pretend an English PDF exists."""
+    def __init__(self, publication, packet):
+        self.diagnostics = [{'code':'TRANSLATION_REVIEW_REQUIRED', 'source':'KIPRIS',
+            'publication':publication.key, 'missing_fields':['english_abstract'],
+            'review_packet':str(packet.resolve()), 'original_download_verified':True}]
+        super().__init__('KPA 결과 없음: 국내 서지·초록·공식 원문 수집 완료. Codex가 원문 대조·영문 번역 후 --ai-manifest로 재개: '+str(packet.resolve()))
+
+
+def collect_domestic_for_translation(page, patent, work, args):
+    """KPA absence is not domestic absence. Stage evidence for agent translation."""
+    import json
+    from .pdf_merger import sha256
+    if not patent.kind:
+        raise CollectionError('KPA 결과 없음: 국내 번역 보완에는 공보 종별을 먼저 확정해야 합니다.')
+    navigate(page, START, args.retries)
+    dialog = page.locator('#modalSearchDetail[aria-hidden="false"]')
+    if dialog.count() and dialog.is_visible():
+        dialog.get_by_role('button', name='닫기', exact=True).click()
+    page.locator('#patentTabPannel').get_by_role('link', name=re.compile(r'^국내')).click()
+    page.wait_for_load_state('networkidle')
+    number = national_number(patent)
+    page.locator('#queryText').fill(number)
+    page.get_by_role('button', name='검색', exact=True).click()
+    page.wait_for_load_state('networkidle')
+    page.wait_for_function('''() => {
+      const r=document.querySelector('#resultSection');
+      return r && (r.querySelector('article') || r.querySelector('.nodata-area'));
+    }''')
+    articles = page.locator('#resultSection article')
+    # A previous KPA no-result pane can remain visible while the domestic query
+    # finishes; never use that stale pane to declare domestic absence.
+    articles.first.wait_for(state='visible')
+    if articles.count() != 1:
+        raise CollectionError('KPA 결과 없음: 국내 검색 후보가 없거나 단일하지 않습니다. 정확 공보를 확인하세요.')
+    articles.get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
+    pane = page.locator('#mainResultDetail')
+    pane.get_by_role('button', name='상세정보', exact=True).wait_for(state='visible')
+    # Save visible bibliography and Korean abstract before switching to the PDF tab.
+    label = '등록번호(일자)' if patent.kind.startswith(('B','Y')) else '공개번호(일자)'
+    field = pane.locator('tr').filter(has=page.get_by_role('rowheader', name=label, exact=True))
+    field.wait_for(state='visible')
+    if not domestic_number_matches(field.inner_text(), number, patent.kind):
+        raise CollectionError('국내 번역 보완 후보의 공보번호 불일치')
+    source_text = pane.locator('#sum_all').inner_text()
+    source_text = re.sub(r'^\s*요약\s*', '', source_text).strip()
+    if not source_text:
+        raise CollectionError('국내 원문 초록 없음: 명세서 근거를 직접 검토하여 AI 요약으로 진행하세요.')
+    (work/'domestic-bibliography.txt').write_text(pane.inner_text(), encoding='utf-8')
+    (work/'domestic-bibliography.html').write_text(pane.inner_html(), encoding='utf-8')
+    biblio_url = page.url
+    parts = download_domestic_pane(page, patent, number, None, biblio_url, work)
+    cover = official_cover_text(parts.original)
+    (work/'original-cover.txt').write_text(cover, encoding='utf-8')
+    # Review flags deliberately remain false, including for scanned covers.
+    # Codex must compare the source and translation rather than merely flip flags.
+    entry = dict(publication=patent.key, translation_type='ai_translation',
+        source_abstract_available=True, source_kind='abstract', source_language='Korean',
+        source_pages=[1], source_text=source_text, english_abstract='',
+        original_source='KIPRIS', original_url=parts.original_url,
+        original_pdf=parts.original.name, original_sha256=sha256(parts.original),
+        original_pages=parts.original_pages, viewer_pages=parts.original_pages,
+        identity_verified=False, full_document_verified=False, source_text_verified=False,
+        translation_reviewed=False, review_note='', bibliography=[],
+        bibliography_note='', official_english_unavailable_reason='KPA exact query returned no result; domestic Korean record and official publication collected.')
+    packet = work/'translation-review.json'
+    packet.write_text(json.dumps({patent.key:entry}, ensure_ascii=False, indent=2), encoding='utf-8')
+    raise TranslationRequired(patent, packet)
