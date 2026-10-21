@@ -233,7 +233,10 @@ def download_domestic_pane(page, publication, number, biblio, biblio_url, work):
     # Korean official cover separates country/kind/number across different fields.
     cover = official_cover_text(original)
     compact = re.sub(r'\s+', '', cover)
-    display_number = '10-' + publication.number[:4] + '-' + publication.number[4:] if len(publication.number)==11 else publication.number[:2]+'-'+publication.number[2:]
+    if len(publication.number)==13 and publication.number.startswith('20'):
+        display_number = '20-'+publication.number[2:6]+'-'+publication.number[6:]
+    else:
+        display_number = '10-' + publication.number[:4] + '-' + publication.number[4:] if len(publication.number)==11 else publication.number[:2]+'-'+publication.number[2:]
     if cover.strip() and display_number not in compact and number not in compact:
         raise CollectionError('원문 표지 번호가 요청한 공보와 일치하지 않습니다.')
     kinds = re.findall(r'공보\s*\(\s*([ABUY]\d*)\s*\)', cover)
@@ -249,7 +252,7 @@ class TranslationRequired(CollectionError):
         self.diagnostics = [{'code':'TRANSLATION_REVIEW_REQUIRED', 'source':'KIPRIS',
             'publication':publication.key, 'missing_fields':['english_abstract'],
             'review_packet':str(packet.resolve()), 'original_download_verified':True}]
-        super().__init__('KPA 결과 없음: 국내 서지·초록·공식 원문 수집 완료. Codex가 원문 대조·영문 번역 후 --ai-manifest로 재개: '+str(packet.resolve()))
+        super().__init__('KPA 결과 없음: 국내 서지·공식 원문 수집 완료. Codex가 원문 초록 유무를 확인하고 번역/요약 검토 후 --ai-manifest로 재개: '+str(packet.resolve()))
 
 
 def collect_domestic_for_translation(page, patent, work, args):
@@ -265,7 +268,8 @@ def collect_domestic_for_translation(page, patent, work, args):
     page.locator('#patentTabPannel').get_by_role('link', name=re.compile(r'^국내')).click()
     page.wait_for_load_state('networkidle')
     number = national_number(patent)
-    page.locator('#queryText').fill(number)
+    search_field = 'GN' if patent.kind.startswith(('B','Y')) else 'OPN'
+    page.locator('#queryText').fill(f'{search_field}=[{number}]')
     page.get_by_role('button', name='검색', exact=True).click()
     page.wait_for_load_state('networkidle')
     page.wait_for_function('''() => {
@@ -276,9 +280,7 @@ def collect_domestic_for_translation(page, patent, work, args):
     # A previous KPA no-result pane can remain visible while the domestic query
     # finishes; never use that stale pane to declare domestic absence.
     articles.first.wait_for(state='visible')
-    if articles.count() != 1:
-        raise CollectionError('KPA 결과 없음: 국내 검색 후보가 없거나 단일하지 않습니다. 정확 공보를 확인하세요.')
-    articles.get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
+    choose_domestic_record(page, patent, number, work)
     pane = page.locator('#mainResultDetail')
     pane.get_by_role('button', name='상세정보', exact=True).wait_for(state='visible')
     # Save visible bibliography and Korean abstract before switching to the PDF tab.
@@ -287,27 +289,68 @@ def collect_domestic_for_translation(page, patent, work, args):
     field.wait_for(state='visible')
     if not domestic_number_matches(field.inner_text(), number, patent.kind):
         raise CollectionError('국내 번역 보완 후보의 공보번호 불일치')
-    source_text = pane.locator('#sum_all').inner_text()
+    abstract = pane.locator('#sum_all')
+    source_text = abstract.inner_text() if abstract.count() else ''
     source_text = re.sub(r'^\s*요약\s*', '', source_text).strip()
-    if not source_text:
-        raise CollectionError('국내 원문 초록 없음: 명세서 근거를 직접 검토하여 AI 요약으로 진행하세요.')
     (work/'domestic-bibliography.txt').write_text(pane.inner_text(), encoding='utf-8')
     (work/'domestic-bibliography.html').write_text(pane.inner_html(), encoding='utf-8')
     biblio_url = page.url
     parts = download_domestic_pane(page, patent, number, None, biblio_url, work)
+    (work/'original-viewer.html').write_text(pane.inner_html(), encoding='utf-8')
     cover = official_cover_text(parts.original)
     (work/'original-cover.txt').write_text(cover, encoding='utf-8')
+    # Web absence does not establish absence inside the publication. Extract all
+    # pages for agent review, but never select summary mode or pages by guessing.
+    if not source_text:
+        import pypdfium2
+        with pypdfium2.PdfDocument(parts.original) as document:
+            for index in range(len(document)):
+                p = document[index]
+                t = p.get_textpage()
+                try:
+                    (work/f'original-page-{index+1}.txt').write_text(t.get_text_range(), encoding='utf-8')
+                finally:
+                    t.close(); p.close()
     # Review flags deliberately remain false, including for scanned covers.
     # Codex must compare the source and translation rather than merely flip flags.
-    entry = dict(publication=patent.key, translation_type='ai_translation',
-        source_abstract_available=True, source_kind='abstract', source_language='Korean',
-        source_pages=[1], source_text=source_text, english_abstract='',
+    entry = dict(publication=patent.key, translation_type='ai_translation' if source_text else 'review_required',
+        source_abstract_available=True if source_text else None,
+        source_kind='abstract' if source_text else '', source_language='Korean',
+        source_pages=[1] if source_text else [], source_text=source_text, english_abstract='',
         original_source='KIPRIS', original_url=parts.original_url,
         original_pdf=parts.original.name, original_sha256=sha256(parts.original),
         original_pages=parts.original_pages, viewer_pages=parts.original_pages,
         identity_verified=False, full_document_verified=False, source_text_verified=False,
         translation_reviewed=False, review_note='', bibliography=[],
-        bibliography_note='', official_english_unavailable_reason='KPA exact query returned no result; domestic Korean record and official publication collected.')
+        bibliography_note='', official_english_unavailable_reason='KPA exact query returned no result; domestic Korean record and official publication collected.',
+        review_instructions=('Compare the original abstract and translate it.' if source_text else
+            'Check all original pages for an abstract (render scans when needed). If found, use ai_translation/source_kind abstract/source_abstract_available true. Only if the original has no abstract, use ai_summary/source_kind description/source_abstract_available false. Record actual source pages and source text; write and review the English translation or summary.'))
     packet = work/'translation-review.json'
     packet.write_text(json.dumps({patent.key:entry}, ensure_ascii=False, indent=2), encoding='utf-8')
     raise TranslationRequired(patent, packet)
+
+
+def choose_domestic_record(page, patent, number, work):
+    """Inspect publication fields, not mentions in titles, claims, or families."""
+    import json
+    articles = page.locator('#resultSection article')
+    label = '등록번호(일자)' if patent.kind.startswith(('B','Y')) else '공개번호(일자)'
+    matches, candidates = [], []
+    for index in range(articles.count()):
+        articles.nth(index).get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
+        page.wait_for_load_state('networkidle')
+        pane = page.locator('#mainResultDetail')
+        pane.get_by_role('button', name='상세정보', exact=True).wait_for(state='visible')
+        field = pane.locator('tr').filter(has=page.get_by_role('rowheader', name=label, exact=True))
+        field.wait_for(state='visible')
+        text = field.inner_text()
+        candidates.append({'result_index':index+1, 'publication_field':label, 'text':text})
+        if domestic_number_matches(text, number, patent.kind):
+            matches.append(index)
+    (work/'domestic-candidates.json').write_text(json.dumps(candidates, ensure_ascii=False, indent=2), encoding='utf-8')
+    if len(matches) != 1:
+        raise CollectionError('국내 정확 공보 후보 '+str(len(matches))+'건: 번호·종별을 확정할 수 없습니다. domestic-candidates.json을 검토하세요.')
+    if matches[0] != articles.count()-1:
+        articles.nth(matches[0]).get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
+        page.wait_for_load_state('networkidle')
+    # Caller rechecks the chosen field; PDF cover checks the actual kind code.

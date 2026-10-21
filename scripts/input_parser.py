@@ -22,7 +22,9 @@ class Patent:
     @property
     def filename(self):
         n = self.number
-        if self.country == "KR" and len(n) == 11:
+        if self.country == "KR" and len(n) == 13 and n.startswith('20'):
+            n = n[:2] + '-' + n[2:6] + '-' + n[6:]
+        elif self.country == "KR" and len(n) == 11:
             n = "10-" + n[:4] + "-" + n[4:]
         elif self.country == "KR" and len(n) == 9:
             n = n[:2] + "-" + n[2:]
@@ -63,7 +65,7 @@ def extract(text, role="publication", country=None):
         if cc == "KR":
             if len(n) == 13 and n.startswith("10"):
                 n = n[2:]
-            if len(n) not in (9, 11):
+            if len(n) not in (9, 11) and not (len(n) == 13 and n.startswith('20')):
                 continue
         elif cc == "JP":
             year = re.fullmatch(r"((?:19|20)\d{2})[- /]+(\d{1,6})", raw.strip())

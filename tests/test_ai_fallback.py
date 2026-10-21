@@ -50,6 +50,16 @@ class AiFallbackTests(unittest.TestCase):
         self.assertIn('AI-GENERATED SUMMARY',text)
         self.assertNotIn('AI-translated abstract',text)
 
+    def test_application_requires_verified_exact_mapping(self):
+        requested=one('JP2004000001',role='application')
+        with self.assertRaisesRegex(CollectionError,'매핑'):
+            validate_packet(requested,self.entry,self.root)
+        entry=dict(self.entry,application=requested.key,mapping_verified=True,mapping_note='Original cover and official domestic record show the same application and publication.')
+        publication,_,_=validate_packet(requested,entry,self.root)
+        self.assertEqual(publication.key,self.pub.key)
+        with self.assertRaisesRegex(CollectionError,'매핑'):
+            validate_packet(requested,dict(entry,application='JP2004000002'),self.root)
+
     def test_ai_pipeline_keeps_original_pages_and_reports_separate_success(self):
         manifest=self.root/'ai.json'; manifest.write_text(json.dumps({self.pub.key:self.entry}),encoding='utf-8')
         out=self.root/'out'

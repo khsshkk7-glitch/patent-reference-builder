@@ -24,6 +24,15 @@ Espacenet의 Patent Translate에서 사이트 영어 번역을 확보한 경우�
 최상위 키는 정확한 공보번호다. 아래 예시의 해시·본문·근거를 실제 확인값으로 채워 사용한다.
 `original_pdf`는 JSON 파일 기준 상대 경로 또는 절대 경로다. 사용자 자료는 저장소에 커밋하지 않는다.
 
+출원번호로 재개할 때는 최상위 키를 입력한 출원번호로 하고, 항목의 `publication`에는 확인된 공보번호·종별을 넣는다.
+`application`(입력 출원번호의 정확한 키), `mapping_verified=true`, `mapping_note`(공식 출원·공보 대응 근거)가 필요하다.
+예: `--text "KR 20-2004-0008221" --role application --ai-manifest reviewed.json`.
+실용신안의 20 접두부를 10으로 바꾸거나 출원번호를 공보번호로 임의 사용하지 않는다.
+
+국내 수집 패킷의 `review_required`는 웹 초록이 없고 원문 확인이 남았다는 의미다. 이는 병합 가능한 완성 입력이 아니다.
+원문에도 초록이 없음을 확인한 뒤에만 `ai_summary`를 선택한다. `source_pages`를 실제 설명·도면 근거 페이지로 채우고
+출처 문구·도면 판독 근거를 `source_text`에 남긴다. 원문에 초록이 있으면 전사·번역 경로로 돌아간다.
+
 ```json
 {
   "JP3102826U": {

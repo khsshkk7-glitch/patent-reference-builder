@@ -18,9 +18,16 @@ LABELS = {
 
 def validate_packet(requested, entry, base):
     publication = one(entry['publication'])
-    if requested.role != 'publication' or not requested.kind or not publication.kind:
+    if not publication.kind:
         raise CollectionError('AI 보완은 확정된 공보번호와 종별이 필요합니다.')
-    resolve(requested, [publication])
+    if requested.role == 'application':
+        if (entry.get('application') != requested.key or entry.get('mapping_verified') is not True
+                or not str(entry.get('mapping_note','')).strip() or requested.country != publication.country):
+            raise CollectionError('AI 보완 출원번호-공보번호 매핑 검토 근거 누락')
+    else:
+        if not requested.kind:
+            raise CollectionError('AI 보완은 확정된 공보번호와 종별이 필요합니다.')
+        resolve(requested, [publication])
     mode = entry.get('translation_type')
     if mode not in LABELS:
         raise CollectionError('AI 번역/요약 또는 사이트 기계번역 구분이 필요합니다.')
@@ -141,6 +148,8 @@ def from_ai_packet(requested, entry, base, work):
         'source_text','english_abstract','official_english_unavailable_reason','review_note')}
     provenance['bibliography'] = entry['bibliography']
     provenance['bibliography_note'] = entry.get('bibliography_note','')
+    if entry.get('application'):
+        provenance.update({k:entry[k] for k in ('application','mapping_verified','mapping_note')})
     if mode=='site_machine_translation':
         provenance.update({k:entry[k] for k in ('site_translation_url','site_translation_notice','site_translation_verified')})
     source_suffix = ' + EPO Patent Translate / AI bibliography' if mode=='site_machine_translation' else ' + AI'
