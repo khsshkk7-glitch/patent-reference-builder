@@ -41,6 +41,8 @@ KPA 인쇄본 + 같은 공보의 Espacenet 원문으로 자동 복구하며, Esp
 `특허번호`/`Patent No.` 또는 사용자 지정의 일반 헤더는 유형을 단정하지 않으므로 명시한 `--role`을 적용할 수 있다.
 dry-run/결과 JSON의 `input_role`, `input_role_source`(explicit/header/default)를 확인한다. 결과에는 정규화 입력번호와
 `search_query`도 보존한다. application은 `ap=` 검색을 사용하며 검토된 출원/공보 매핑 없이 공보번호로 임의 전환하지 않는다.
+한국의 권리 접두부와 11자리 U 입력의 공보/출원 구분은 [한국 번호 정규화](kr-numbering.md)를 따른다.
+입력 계획의 `kr_right`(10/20/빈값)와 실제 결과의 `input_kr_right`를 확인한다. 유형 미확정 11자리 번호를 KIPRIS용 10형으로 임의 변환하지 않는다.
 
 ```sh
 python scripts/build_references.py --input list.csv --role application --dry-run --out output/check

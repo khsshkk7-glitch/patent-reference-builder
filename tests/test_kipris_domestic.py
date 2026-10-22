@@ -32,7 +32,8 @@ class KiprisDomestic(TestCase):
             browser=pw.chromium.launch();context=browser.new_context()
             for key,number,cover,tab in [('KR20200137353A','1020200137353','10-2020-0137353','공개전문'),
                                          ('KR101531015B1','101531015','10-1531015','공고전문'),
-                                         ('KR200355113Y1','200355113','20-0355113','공고전문')]:
+                                         ('KR200355113Y1','200355113','20-0355113','공고전문'),
+                                         ('KR20070000036U','2020070000036','20-2007-0000036','공개전문')]:
                 with self.subTest(key=key):
                     blob=base64.b64encode(fixture_pdf(cover)).decode()
                     field='등록번호(일자)' if tab=='공고전문' else '공개번호(일자)'

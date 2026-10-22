@@ -70,7 +70,7 @@ def input_rows(args):
         patents = extract(chunk, role, args.country)
         if len(patents) > 1:
             base = len(rows) + 2
-            rows.extend(Row("입력", base + i, p.key, role, role_source='explicit' if args.role else 'default') for i, p in enumerate(patents))
+            rows.extend(Row("입력", base + i, p.input_text, role, role_source='explicit' if args.role else 'default') for i, p in enumerate(patents))
         else:
             rows.append(Row("입력", len(rows) + 2, chunk, role, role_source='explicit' if args.role else 'default'))
     return {"입력": [("특허번호",)] + [(r.value,) for r in rows]}, {"입력": (0, 1)}, rows
@@ -199,6 +199,7 @@ def run(args):
             result = {"sheet": row.sheet, "row": row.index, "input": row.value, "status": "실패",
                       "input_role":row.role, "input_role_source":row.role_source,
                       "normalized_input":patent.key if patent else None, "search_query":patent.query if patent else None,
+                      "input_kr_right":patent.kr_right if patent else '',
                       "report_row":row.index + (1 if h < 0 else 0), "report_start_column":width + 1}
             if row.exclusion:
                 result.update(status='제외', note=row.exclusion, complete_reference=False)
@@ -209,7 +210,7 @@ def run(args):
             try:
                 if error:
                     raise ValueError(error)
-                cache_key = (patent.key, patent.role)
+                cache_key = patent.cache_key
                 if cache_key in cache:
                     result.update(cache[cache_key])
                     result["note"] += " | 중복 입력: 기존 생성 결과 재사용"
@@ -228,7 +229,7 @@ def run(args):
                             if args.original_only else collect(page, patent, work, args))
                         time.sleep(args.delay)
                     filename = parts.publication.filename
-                    resolved_key = (parts.publication.key, 'publication')
+                    resolved_key = parts.publication.cache_key
                     if resolved_key in cache:
                         success = dict(cache[resolved_key])
                         success['note'] += ' | 같은 공보의 입력 표기 변형: 결과 재사용'

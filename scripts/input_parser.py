@@ -10,6 +10,7 @@ class Patent:
     number: str
     kind: str = ""
     role: str = "publication"
+    kr_right: str = ""  # Explicit national prefix or type supported by the kind code.
 
     @property
     def key(self):
@@ -20,12 +21,23 @@ class Patent:
         return ("ap=" if self.role == "application" else "pn=") + self.key
 
     @property
+    def cache_key(self):
+        return self.key, self.role, korean_right(self) if self.country == 'KR' else ''
+
+    @property
+    def input_text(self):
+        if self.country == 'KR' and korean_right(self):
+            return 'KR ' + korean_display_number(self) + (' ' + self.kind if self.kind else '')
+        return self.key
+
+    @property
     def filename(self):
         n = self.number
         if self.country == "KR" and len(n) == 13 and n.startswith('20'):
             n = n[:2] + '-' + n[2:6] + '-' + n[6:]
         elif self.country == "KR" and len(n) == 11:
-            n = "10-" + n[:4] + "-" + n[4:]
+            prefix = korean_right(self)
+            n = (prefix + '-' if prefix else '') + n[:4] + '-' + n[4:]
         elif self.country == "KR" and len(n) == 9:
             n = n[:2] + "-" + n[2:]
         elif self.country in ("JP", "US", "WO") and n[:2] in ("19", "20") and len(n) >= 10:
@@ -33,6 +45,35 @@ class Patent:
         # KR sample omits A; never omit a B kind because it could collide.
         suffix = " " + self.kind if self.kind and not (self.country == "KR" and self.kind == "A") else ""
         return f"{self.country} {n}{suffix}.pdf"
+
+
+def kind_right(kind):
+    if kind.startswith(('U', 'Y')):
+        return '20'
+    if kind.startswith(('A', 'B')):
+        return '10'
+    return ''
+
+
+def korean_right(patent):
+    return patent.kr_right or kind_right(patent.kind)
+
+
+def korean_national_number(patent):
+    """Do not turn a type-unknown eleven-digit identifier into a patent number."""
+    if patent.country != 'KR':
+        raise ValueError('한국 번호가 아닙니다.')
+    if len(patent.number) == 11:
+        prefix = korean_right(patent)
+        if not prefix:
+            raise ValueError('한국 11자리 번호의 권리 유형을 확인할 수 없습니다. 10-/20- 접두부 또는 확인된 공보 종별을 지정하세요.')
+        return prefix + patent.number
+    return patent.number
+
+
+def korean_display_number(patent):
+    n = korean_national_number(patent)
+    return n[:2] + '-' + n[2:6] + '-' + n[6:] if len(n) == 13 else n[:2] + '-' + n[2:]
 
 
 COUNTRIES = 'KR JP US EP WO CN DE GB FR CA AU TW AT BE BR CH CZ DK ES FI GR HK HU IE IL IN IT MX NL NO NZ PL PT RU SE SG SK TR UA ZA EA AP AR BG CL CO ID MY PH TH VN'.split()
@@ -62,9 +103,19 @@ def extract(text, role="publication", country=None):
     for m in PATTERN.finditer(value):
         cc, raw, kind = m["cc"].upper(), m["num"], (m["kind"] or "").upper()
         n = re.sub(r"\D", "", raw)
+        kr_right = ''
         if cc == "KR":
-            if len(n) == 13 and n.startswith("10"):
-                n = n[2:]
+            if len(n) == 13 and n.startswith(('10', '20')):
+                kr_right = n[:2]
+                if kind_right(kind) and kind_right(kind) != kr_right:
+                    continue  # A conflicting prefix and kind must not be silently repaired.
+                if kr_right == '10' or role == 'publication' or kind.startswith('U'):
+                    n = n[2:]
+            elif len(n) == 9 and n.startswith(('10', '20')):
+                kr_right = n[:2]
+                if kind_right(kind) and kind_right(kind) != kr_right:
+                    continue
+            kr_right = kr_right or kind_right(kind)
             if len(n) not in (9, 11) and not (len(n) == 13 and n.startswith('20')):
                 continue
         elif cc == "JP":
@@ -75,7 +126,7 @@ def extract(text, role="publication", country=None):
                 continue
         elif not 6 <= len(n) <= 13:
             continue
-        p = Patent(cc, n, kind, role)
+        p = Patent(cc, n, kind, role, kr_right)
         if p not in found:
             found.append(p)
     return found
@@ -91,7 +142,8 @@ def one(text, **kwargs):
 def resolve(requested, candidates):
     """Candidates must come from the selected publication field, NOT family/citation text."""
     exact = [p for p in candidates if p.country == requested.country and p.number == requested.number
-             and (not requested.kind or p.kind == requested.kind) and p.kind]
+             and (not requested.kind or p.kind == requested.kind) and p.kind
+             and (requested.country != 'KR' or not korean_right(requested) or korean_right(requested) == korean_right(p))]
     exact = list(dict.fromkeys(exact))
     if requested.role == "application":
         raise ValueError("출원번호는 공보번호로 먼저 매핑해야 합니다. 후보 공보를 확인하세요.")

@@ -6,7 +6,7 @@ import re
 import json
 from .browser_session import navigate, checkpoint, CollectionError, assert_official_url
 from .collector_common import Collected, print_biblio
-from .input_parser import extract, resolve
+from .input_parser import extract, resolve, korean_national_number, korean_display_number
 from .pdf_merger import inspect_pdf
 
 
@@ -67,7 +67,7 @@ def collect_configured(page, patent, work, args):
 
 
 def national_number(patent):
-    return ('10' + patent.number) if len(patent.number) == 11 else patent.number
+    return korean_national_number(patent)
 
 
 def domestic_number_matches(text, number, kind):
@@ -267,10 +267,7 @@ def download_domestic_pane(page, publication, number, biblio, biblio_url, work):
     # Korean official cover separates country/kind/number across different fields.
     cover = official_cover_text(original)
     compact = re.sub(r'\s+', '', cover)
-    if len(publication.number)==13 and publication.number.startswith('20'):
-        display_number = '20-'+publication.number[2:6]+'-'+publication.number[6:]
-    else:
-        display_number = '10-' + publication.number[:4] + '-' + publication.number[4:] if len(publication.number)==11 else publication.number[:2]+'-'+publication.number[2:]
+    display_number = korean_display_number(publication)
     if cover.strip() and display_number not in compact and number not in compact:
         raise CollectionError('원문 표지 번호가 요청한 공보와 일치하지 않습니다.')
     kinds = re.findall(r'공보\s*\(\s*([ABUY]\d*)\s*\)', cover)
