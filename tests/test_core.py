@@ -144,7 +144,9 @@ class Files(unittest.TestCase):
         args=parser().parse_args(['--text','JP2006198019A,JP2006198019A,bad','--manifest',str(manifest),'--out',str(self.root/'out'),'--zip'])
         self.assertEqual(run(args),1)
         result=json.loads(next((self.root/'out').glob('*.json')).read_text(encoding='utf-8'))
-        self.assertEqual([r['status'] for r in result],['성공','성공','실패'])
+        self.assertEqual([r['status'] for r in result],['생성 완료','생성 완료','실패'])
+        self.assertFalse(result[0]['complete_reference'])
+        self.assertEqual(result[0]['review_status'], '검수 대기')
         self.assertEqual(len(list((self.root/'out').glob('*.pdf'))),1)
         self.assertEqual(len(list((self.root/'out').glob('*.zip'))),1)
         item['original_sha256']='invalid'

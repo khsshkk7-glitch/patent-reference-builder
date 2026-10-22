@@ -22,6 +22,7 @@ from .collector_common import from_manifest
 from .browser_session import browser_session, CollectionError, HumanRequired, HumanWaitTimeout, checkpoint
 from . import espacenet_collector, kipris_collector
 from .original_identity import IdentityReviewRequired, DocumentIdentityMismatch
+from .final_review import create_packet
 
 
 def parser():
@@ -191,7 +192,9 @@ def run(args):
         browser_error = "브라우저 시작 실패: " + str(exc)
     try:
         for index, (row, patent, error) in enumerate(parsed, 1):
-            result = {"sheet": row.sheet, "row": row.index, "input": row.value, "status": "실패"}
+            h, width = layouts[row.sheet]
+            result = {"sheet": row.sheet, "row": row.index, "input": row.value, "status": "실패",
+                      "report_row":row.index + (1 if h < 0 else 0), "report_start_column":width + 1}
             if row.exclusion:
                 result.update(status='제외', note=row.exclusion, complete_reference=False)
                 results.append(result)
@@ -236,16 +239,22 @@ def run(args):
                         site_mode = parts.translation_type == 'site_machine_translation'
                         ai_mode = parts.translation_type in ('ai_translation','ai_summary')
                         ai_status = 'AI 번역 보완' if parts.translation_type == 'ai_translation' else 'AI 요약 보완'
-                        success = dict(status="원문만" if args.original_only else ('사이트 기계번역 보완' if site_mode else (ai_status if ai_mode else "성공")), filename=filename, **stats,
+                        success = dict(status="원문만" if args.original_only else ('사이트 기계번역 보완' if site_mode else (ai_status if ai_mode else "생성 완료")), filename=filename, **stats,
                             output_path=str(output),
                             publication=parts.publication.key, source=parts.source, biblio_url=parts.biblio_url,
                             original_url=parts.original_url, note=note,
-                            result_type='original_only' if args.original_only else ('site_machine_translated_reference' if site_mode else ('ai_assisted_reference' if ai_mode else 'complete_reference')),
-                            complete_reference=not args.original_only and not ai_mode and not site_mode, missing_fields=list(parts.missing_fields),
+                            result_type='original_only' if args.original_only else ('site_machine_translated_reference' if site_mode else ('ai_assisted_reference' if ai_mode else 'official_reference')),
+                            material_type='original_only' if args.original_only else parts.translation_type,
+                            generation_status='완료', review_status='검수 대기', final_review_complete=False,
+                            official_materials_complete=not args.original_only and not ai_mode and not site_mode,
+                            complete_reference=False, missing_fields=list(parts.missing_fields),
                             translation_type=parts.translation_type,
                             ai_provenance=({k:parts.ai_provenance[k] for k in ('bibliography','bibliography_note')} if site_mode else parts.ai_provenance),
                             site_translation_provenance=parts.ai_provenance if site_mode else None,
+                            biblio_path=str(parts.biblio.resolve()) if parts.biblio else None, original_path=str(parts.original.resolve()),
                             biblio_sha256=sha256(parts.biblio) if parts.biblio else None, original_sha256=sha256(parts.original))
+                        success['note'] += ' | PDF 생성 완료; 최종 시각 검수 대기'
+                        success['review_packet'] = str(create_packet(success, work / 'final-review.json'))
                         cache[resolved_key] = success
                     cache[cache_key] = success
                     result.update(success)
@@ -280,7 +289,8 @@ def run(args):
     if args.zip:
         has_site_translation = any(isinstance(v,dict) and v.get('translation_type')=='site_machine_translation' for v in ai_manifest.values())
         archive_prefix = '원문만' if args.original_only else ('번역보완참증' if has_site_translation else ('AI보완참증' if ai_manifest else '참증'))
-        with zipfile.ZipFile(args.out / f"{archive_prefix}_{stamp}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        with zipfile.ZipFile(args.out / f"검수대기_{archive_prefix}_{stamp}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr('검수안내.txt', '이 ZIP은 PDF 생성 결과입니다. 최종 시각 검수가 완료되지 않았습니다. 결과표의 자료 유형과 검수 상태를 확인하세요.')
             for path in sorted({r['output_path'] for r in results if r.get('output_path') and r['status'] != '실패'}):
                 target = Path(path)
                 z.write(target, target.relative_to(args.out).as_posix())
@@ -294,11 +304,15 @@ def run(args):
     pending = sum(r['status'] == '번역 검토 대기' for r in results)
     identity_pending = sum(r['status'] == '원문 식별 검수 대기' for r in results)
     excluded = sum(r['status'] == '제외' for r in results)
-    accounted = successes + originals + ai_assisted + site_translated + failures + pending + identity_pending + excluded
+    official_generated = sum(r.get('material_type') == 'official' for r in results)
+    final_review_pending = sum(r.get('review_status') == '검수 대기' for r in results)
+    accounted = official_generated + originals + ai_assisted + site_translated + failures + pending + identity_pending + excluded
     if accounted != len(rows) or len(results) != len(rows):
         raise ValueError('입력 행과 처리결과 집계가 일치하지 않습니다.')
     print(json.dumps({"input_rows":len(rows), "recorded_rows":len(results), "excluded":excluded, "accounting":str(run_dir / 'input-accounting.json'),
-        "success": successes, "original_only": originals, 'ai_assisted':ai_assisted, 'site_translated':site_translated, "failed": failures,
+        "success": successes, "official_generated":official_generated, "generated":sum(bool(r.get('output_path')) for r in results),
+        "final_review_pending":final_review_pending, "final_review_complete":0,
+        "original_only": originals, 'ai_assisted':ai_assisted, 'site_translated':site_translated, "failed": failures,
         "translation_pending": pending, "identity_pending":identity_pending, "output_directory": str(args.out), "report": str(report),
         "files": sorted({r["output_path"] for r in results if r.get('output_path') and r['status'] != '실패'})}, ensure_ascii=False))
     return 0 if failures == 0 and pending == 0 and identity_pending == 0 else 1

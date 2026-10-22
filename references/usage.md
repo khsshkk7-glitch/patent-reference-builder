@@ -52,7 +52,7 @@ JSON의 `row`는 항상 원본 행 번호다. 종료 요약의 `input_rows`와 `
 변경·리디렉션된 Downloads 위치를 조회한다. Linux는 XDG_DOWNLOAD_DIR 설정, macOS는 ~/Downloads를 사용한다.
 Windows 위치 조회가 실패하면 오류를 알리고 `--out`으로 명시하도록 하며 임의 폴더로 저장하지 않는다.
 다른 위치를 원하면 `--out "/absolute/path/folder"`로 지정한다.
-`work/`에는 원본 조각과 실패 화면이 남는다. ZIP은 이번 실행의 완료 PDF와 보고서만 포함한다.
+`work/`에는 원본 조각·검수 양식·실패 화면이 남는다. 생성 명령의 ZIP은 `검수대기_` 접두부로 이번 생성 PDF와 보고서·검수 안내를 포함한다.
 AI 보완 결과와 명시적으로 요청한 원문 단독 결과도 상태를 구분해 포함하며 실패 파일은 넣지 않는다.
 중복 행은 별도 행으로 보고하지만 같은 PDF를 재사용한다. 이전 실행의 동일 파일명이 있으면
 `특허번호 (2).pdf`, `(3).pdf` 순서로 새 파일을 만든다. 기존 파일은 보존한다.
@@ -65,7 +65,9 @@ AI 보완 결과와 명시적으로 요청한 원문 단독 결과도 상태를 
 결과 JSON의 `output_path`와 종료 요약의 `files`는 실제 최종 파일의 절대 경로다.
 결과 엑셀은 실제 파일명을 기록하고 해당 PDF를 여는 하이퍼링크를 제공한다.
 
-종료코드: `0` 전건 성공, `1` 일부/전체 건별 실패, `2` 잘못된 실행 옵션·입출력 오류.
+생성 명령 종료코드: `0` 전건 생성 완료(최종 검수 완료를 의미하지 않음), `1` 일부/전체 건별 실패 또는 수집·번역 검토 대기, `2` 잘못된 실행 옵션·입출력 오류.
+생성 직후 공식 자료도 `complete_reference=false`다. `official_materials_complete`는 공식 구성자료 확보 여부이며
+`final_review_complete` 및 `review_status`와 구분한다. 최종 검수 절차·결과 갱신·완료 ZIP은 [최종 검수 기록](final-review.md)을 따른다.
 `--dry-run`은 문헌 검색·PDF 생성을 하지 않고 입력 계획을 `input-plan.json`에 저장한다.
 
 ## 브라우저 옵션
@@ -112,7 +114,7 @@ python scripts/build_references.py --text JP3102826U --native-chrome --headed --
 다운로드 폴더의 `원문만/JP 3102826 U.pdf`에 공식 원본 바이트를 보존한다.
 보고서는 `status=원문만`, `result_type=original_only`, `complete_reference=false`, 영문 누락 항목을 기록한다.
 집계는 `success`(완성 참증), `original_only`, `failed`를 구분한다. 요청한 원문 단독 수집이 끝나면 종료코드는 0이다.
-ZIP도 `원문만_…zip`이며 내부의 별도 폴더를 보존한다.
+생성 ZIP도 `검수대기_원문만_…zip`이며 내부의 별도 폴더를 보존한다.
 
 J-PlatPat의 JP U 영문 기계번역을 사용자가 **별도 보완자료로 명시적으로 허용했을 때만**:
 
@@ -131,5 +133,5 @@ python scripts/jplatpat_supplement.py --text JP3102826U --source-url https://www
 현재 스킬은 영문 초록을 못 찾으면 Codex가 같은 공보 원문 초록을 번역해 보완한다.
 원문 초록도 없으면 AI 작성 요약으로 구분한다. [AI 보완 작성·검토 JSON 및 배치 명령](ai-fallback.md)을 따른다.
 결과는 `AI 번역 보완`/`AI 요약 보완`, `ai_assisted_reference`이며 공식 자료 성공 건수와 별도로 집계한다.
-보고서의 `complete_reference=false`는 공식 영문 자료가 모두 갖춰진 참증이 아니라는 뜻이며,
+AI 보완 보고서의 `complete_reference=false`는 공식 영문 자료가 모두 갖춰진 참증이 아니라는 뜻이며 최종 검수 후에도 유지한다.
 AI 표시 표지와 공식 원문 전문이 병합된 최종 PDF는 정상적으로 생성해 전달한다.

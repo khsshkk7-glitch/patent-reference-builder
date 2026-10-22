@@ -92,10 +92,19 @@ def safe_cell(cell, value):
         cell.data_type = "s"  # no execution of user-supplied spreadsheet formulas
 
 
+def result_values(result):
+    labels = dict(official='공식 영문자료', original_only='원문 단독', ai_translation='AI 번역',
+                  ai_summary='AI 요약', site_machine_translation='사이트 기계번역')
+    return [result['status'], result.get('filename', ''), result.get('pages', ''), result.get('note', ''),
+            labels.get(result.get('material_type'), ''), result.get('review_status', ''), result.get('review_packet', ''),
+            result.get('reviewed_at', '')]
+
+
 def write_report(path, sheets, layouts, results):
     wb = Workbook()
     wb.remove(wb.active)
-    headers = ["처리결과(공식/기계번역/AI/원문/대기/실패)", "생성된 PDF 파일명", "총 페이지 수", "비고(실패 사유 또는 출처 사이트)"]
+    headers = ["처리결과(생성/검수/대기/실패)", "생성된 PDF 파일명", "총 페이지 수", "비고(실패 사유 또는 출처 사이트)",
+               "자료 유형", "최종 검수 상태", "검수 근거 JSON", "검수 일시"]
     for name, values in sheets.items():
         ws = wb.create_sheet(name)
         h, width = layouts.get(name, (0, max((len(v) for v in values), default=0)))
@@ -113,7 +122,7 @@ def write_report(path, sheets, layouts, results):
         for result in results:
             if result["sheet"] != name:
                 continue
-            vals = [result["status"], result.get("filename", ""), result.get("pages", ""), result.get("note", "")]
+            vals = result_values(result)
             for j, val in enumerate(vals, width + 1):
                 safe_cell(ws.cell(result["row"] + shift, j), val)
                 ws.cell(result["row"] + shift, j).alignment = Alignment(vertical="top", wrap_text=True)
@@ -122,7 +131,17 @@ def write_report(path, sheets, layouts, results):
                 cell.hyperlink = Path(result["output_path"]).resolve().as_uri()
                 cell.style = "Hyperlink"
         from openpyxl.utils import get_column_letter
-        for offset, size in enumerate([22, 42, 16, 85], width + 1):
+        for offset, size in enumerate([24, 42, 16, 85, 24, 22, 60, 28], width + 1):
             ws.column_dimensions[get_column_letter(offset)].width = size
         ws.freeze_panes = f"A{hr + 1}"
     wb.save(path)
+
+
+def update_review_report(source, target, results):
+    """Write a separate reviewed report; retain the original input and pending report."""
+    wb = load_workbook(source)
+    for result in results:
+        ws = wb[result['sheet']]
+        for j, value in enumerate(result_values(result), result['report_start_column']):
+            safe_cell(ws.cell(result['report_row'], j), value)
+    wb.save(target)

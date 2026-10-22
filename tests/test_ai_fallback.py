@@ -75,7 +75,7 @@ class AiFallbackTests(unittest.TestCase):
         self.assertEqual(len(result.pages),rows[0]['biblio_pages']+2)
         for i,p in enumerate(original.pages):
             self.assertEqual(p.get_contents().get_data(),result.pages[rows[0]['biblio_pages']+i].get_contents().get_data())
-        with zipfile.ZipFile(next(out.glob('AI보완참증_*.zip'))) as archive:
+        with zipfile.ZipFile(next(out.glob('검수대기_AI보완참증_*.zip'))) as archive:
             self.assertEqual(sum(n.endswith('.pdf') for n in archive.namelist()),1)
 
     def test_patent_translate_stays_site_translation_and_preserves_notice(self):
@@ -97,7 +97,7 @@ class AiFallbackTests(unittest.TestCase):
         text=''.join(p.extract_text() for p in inspect_pdf(record['output_path']).pages)
         self.assertIn('This translation is machine-generated.',text)
         self.assertNotIn('AI-translated abstract',text)
-        self.assertTrue(list(out.glob('번역보완참증_*.zip')))
+        self.assertTrue(list(out.glob('검수대기_번역보완참증_*.zip')))
 
 
 if __name__ == '__main__':
