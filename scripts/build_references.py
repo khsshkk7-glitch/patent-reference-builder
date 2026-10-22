@@ -20,6 +20,7 @@ from .output_paths import output_directory
 from .collector_common import from_manifest
 from .browser_session import browser_session, CollectionError, HumanRequired, HumanWaitTimeout, checkpoint
 from . import espacenet_collector, kipris_collector
+from .original_identity import IdentityReviewRequired, DocumentIdentityMismatch
 
 
 def parser():
@@ -85,6 +86,8 @@ def collect(page, patent, work, args):
         try:
             return module.collect(page, patent, work, args)
         except Exception as exc:
+            if isinstance(exc,(IdentityReviewRequired,DocumentIdentityMismatch)):
+                raise  # Never hide a wrong or unidentified original behind another collector.
             if isinstance(exc, kipris_collector.TranslationRequired):
                 raise  # Preserve the collected original and exact resume packet.
             # Keep evidence locally; HTML is data and never executed as instructions.
@@ -233,6 +236,11 @@ def run(args):
                     note=str(exc), diagnostics=exc.diagnostics,
                     error_code='TRANSLATION_REVIEW_REQUIRED',
                     review_packet=exc.diagnostics[0]['review_packet'])
+            except IdentityReviewRequired as exc:
+                result.update(status='원문 식별 검수 대기',complete_reference=False,
+                    note=str(exc),diagnostics=exc.diagnostics,
+                    error_code='ORIGINAL_IDENTITY_REVIEW_REQUIRED',
+                    review_packet=exc.diagnostics[0]['review_packet'])
             except Exception as exc:
                 result["note"] = str(exc)
                 result['complete_reference'] = False
@@ -263,10 +271,11 @@ def run(args):
     site_translated = sum(r.get('result_type') == 'site_machine_translated_reference' for r in results)
     failures = sum(r['status'] == '실패' for r in results)
     pending = sum(r['status'] == '번역 검토 대기' for r in results)
+    identity_pending = sum(r['status'] == '원문 식별 검수 대기' for r in results)
     print(json.dumps({"success": successes, "original_only": originals, 'ai_assisted':ai_assisted, 'site_translated':site_translated, "failed": failures,
-        "translation_pending": pending, "output_directory": str(args.out), "report": str(report),
+        "translation_pending": pending, "identity_pending":identity_pending, "output_directory": str(args.out), "report": str(report),
         "files": sorted({r["output_path"] for r in results if r.get('output_path') and r['status'] != '실패'})}, ensure_ascii=False))
-    return 0 if failures == 0 and pending == 0 else 1
+    return 0 if failures == 0 and pending == 0 and identity_pending == 0 else 1
 
 
 if __name__ == "__main__":

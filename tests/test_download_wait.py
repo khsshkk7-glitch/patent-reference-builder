@@ -27,7 +27,7 @@ def verification(url=URL):
 
 class DownloadWait(TestCase):
     def test_download_completes_without_reclicking(self):
-        page=Page();item=object();clicks=[]
+        page=Page();item=SimpleNamespace(url=URL);clicks=[]
         def trigger():
             clicks.append(1)
             page.listeners['response'](verification())
@@ -47,7 +47,7 @@ class DownloadWait(TestCase):
         self.assertEqual(page.listeners,{})
 
     def test_other_publication_response_does_not_count_as_repeat(self):
-        page=Page();item=object()
+        page=Page();item=SimpleNamespace(url=URL)
         def trigger():
             for _ in range(3):page.listeners['response'](verification(URL.replace('2004121879A','2006198019A')))
             page.next_event=lambda:page.listeners['download'](item)
@@ -61,7 +61,7 @@ class DownloadWait(TestCase):
         self.assertEqual(page.listeners,{})
 
     def test_prompt_counts_and_callback_are_recorded_without_answers(self):
-        page=Page();metrics={};notices=[];item=object()
+        page=Page();metrics={};notices=[];item=SimpleNamespace(url=URL)
         def trigger():
             page.listeners['response'](verification())
             page.next_event=lambda:page.listeners['download'](item)
@@ -70,3 +70,15 @@ class DownloadWait(TestCase):
         self.assertEqual(metrics['captcha_prompts'],1)
         self.assertEqual(metrics['status'],'downloaded')
         self.assertNotIn('answer',metrics)
+
+    def test_unrelated_download_is_ignored_until_exact_source_arrives(self):
+        page=Page();metrics={};good=SimpleNamespace(url=URL)
+        def trigger():
+            for url in (URL.replace('2004121879A','2006198019A'),
+                        URL.replace('worldwide.espacenet.com','example.org'),
+                        URL.replace('trueFull','plainPage'),URL.replace('KC=A','KC=B'),
+                        URL.replace('https:','http:')):
+                page.listeners['download'](SimpleNamespace(url=url))
+            page.next_event=lambda:page.listeners['download'](good)
+        self.assertIs(wait_for_download(page,trigger,URL,5,True,metrics=metrics),good)
+        self.assertEqual(metrics['ignored_downloads'],5)

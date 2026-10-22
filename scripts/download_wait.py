@@ -12,7 +12,14 @@ def wait_for_download(page, trigger, href, wait_seconds, interactive, metrics=No
     downloads, responses = [], []
 
     def downloaded(item):
-        downloads.append(item)
+        url = urlparse(item.url)
+        params = parse_qs(url.query)
+        if (url.scheme == 'https' and url.hostname == target.hostname
+                and url.port == target.port and url.path == target.path
+                and all(params.get(key) == expected.get(key) for key in ('CC','NR','KC','flavour'))):
+            downloads.append(item)
+        else:
+            metrics['ignored_downloads'] = metrics.get('ignored_downloads',0)+1
 
     def responded(response):
         url = urlparse(response.url)

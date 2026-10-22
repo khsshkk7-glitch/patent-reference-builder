@@ -9,6 +9,8 @@ from pypdf import PdfWriter, PdfReader
 from playwright.sync_api import sync_playwright
 from scripts.espacenet_collector import collect, collect_original, START
 from scripts.input_parser import one
+from tests.test_kipris_domestic import fixture_pdf
+from scripts.original_identity import DocumentIdentityMismatch, IdentityReviewRequired
 
 ABSTRACT = 'A storage shelf comprises a back plate and multiple shelf boards. Lighting devices illuminate reflecting members to reduce deterioration of stored articles and provide a comfortable appearance.'
 
@@ -36,16 +38,23 @@ class BrowserContract(unittest.TestCase):
     def test_ops_replaces_browser_download_and_keeps_viewer_validation(self):
         self.check_download(interactive=False,ops=True)
 
-    def check_download(self, interactive, original_only=False, ops=False):
+    def test_different_number_country_and_kind_are_rejected(self):
+        for cover in ('JP2004121879A','US20200123456A1','JP2006198019B'):
+            with self.subTest(cover=cover), self.assertRaises(DocumentIdentityMismatch):
+                self.check_download(False,original_only=True,cover=cover)
+
+    def test_unidentifiable_cover_requires_review(self):
+        with self.assertRaises(IdentityReviewRequired):
+            self.check_download(False,original_only=True,cover='Scanned or unreadable cover')
+
+    def check_download(self, interactive, original_only=False, ops=False, cover='JP2006198019A'):
         with tempfile.TemporaryDirectory() as tmp:
             context = self.browser.new_context()
             def route(r):
                 url = r.request.url
                 if 'flavour=trueFull' in url:
                     if ops:self.fail('OPS mode must not trigger browser full-download')
-                    w=PdfWriter();w.add_blank_page(width=595.28,height=841.89);w.add_blank_page(width=595.28,height=841.89)
-                    out=io.BytesIO();w.write(out);w.close()
-                    return r.fulfill(body=out.getvalue(),content_type='application/pdf',
+                    return r.fulfill(body=fixture_pdf(cover),content_type='application/pdf',
                         headers={'Content-Disposition': 'attachment; filename="original.pdf"'})
                 if 'advancedSearch' in url:
                     html='<input id="pnEditBox"><button onclick="location.href=\'/results\'">Search</button>'
@@ -73,9 +82,7 @@ class BrowserContract(unittest.TestCase):
                     self.assertEqual(publication.key,'JP2006198019A')
                     self.assertEqual(expected_pages,2)
                     target=Path(work)/'original-ops.pdf'
-                    writer=PdfWriter()
-                    for _ in range(2):writer.add_blank_page(width=595.28,height=841.89)
-                    writer.write(target);writer.close()
+                    target.write_bytes(fixture_pdf(cover))
                     return target,2,'https://ops.epo.org/3.2/rest-services/published-data/publication/docdb/JP.2006198019.A/images'
                 args.original_method='ops'
                 args.ops_client=Mock();args.ops_client.download.side_effect=api_download

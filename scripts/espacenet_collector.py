@@ -6,6 +6,7 @@ from .collector_common import Collected, print_biblio, english_abstract
 from .pdf_merger import inspect_pdf
 from .browser_session import CollectionError, MetadataUnavailable, HumanRequired, HumanWaitTimeout, navigate
 from .download_wait import wait_for_download
+from .original_identity import verify_original
 
 
 START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
@@ -108,6 +109,7 @@ def collect_original_only(page, patent, work, args):
 
 
 def download_original(page, publication, work, args):
+    biblio_url = page.url
     original_link = page.get_by_role("link", name="Original document", exact=True)
     original_link.wait_for(state="visible")
     original_link.click()
@@ -133,6 +135,7 @@ def download_original(page, publication, work, args):
             if not hasattr(args,'ops_client'):
                 args.ops_client = OpsClient(timeout=args.timeout)
             result = args.ops_client.download(publication,work,expected_pages=count)
+            verify_original(publication,result[0],count,work,'Espacenet + EPO OPS',biblio_url,result[2])
             metrics.update(status='downloaded',pages=count)
             return result
         except Exception:
@@ -196,10 +199,5 @@ def download_original(page, publication, work, args):
     r = inspect_pdf(target)
     if len(r.pages) != count:
         raise CollectionError("전체 페이지 수와 다운로드 PDF 불일치")
-    first = r.pages[0].extract_text() or ""
-    # A scanned facsimile has no text. The checked official full-download URL
-    # plus selected document heading and pagination still bind it to this record.
-    ids = [p for p in extract(first) if p.country == publication.country and p.number == publication.number]
-    if ids:
-        resolve(publication, ids)
+    verify_original(publication,target,count,work,'Espacenet',biblio_url,original_url)
     return target, count, original_url
