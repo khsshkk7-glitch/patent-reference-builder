@@ -3,6 +3,7 @@
 Selectors are supplied from the current inspected UI; do not guess private APIs.
 """
 import re
+import json
 from .browser_session import navigate, checkpoint, CollectionError, assert_official_url
 from .collector_common import Collected, print_biblio
 from .input_parser import extract, resolve
@@ -91,6 +92,12 @@ def official_cover_text(path):
             page.close()
 
 
+def kpa_evidence(work, patent, reason, candidates, **details):
+    """Retain the public publication fields that determined the KPA route."""
+    record = dict(requested=patent.key, reason=reason, candidates=candidates, **details)
+    (work / 'kpa-candidates.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
 def collect(page, patent, work, args):
     """Default adapter inspected on 2026-10-15; KPA then domestic full PDF."""
     if args.selectors.get('kipris'):
@@ -113,24 +120,51 @@ def collect(page, patent, work, args):
         (result.querySelector('.nodata-area') && result.innerText.includes('검색결과가 없습니다')));
     }''')
     if page.locator('#resultSection .nodata-area').count():
+        kpa_evidence(work, patent, 'no_results', [], exact_candidates=0)
         return collect_domestic_for_translation(page, patent, work, args)
     page.locator('#resultSection article').first.wait_for(state='visible')
-    candidates = []
+    candidates, evidence, unreadable = [], [], False
     articles = page.locator('#resultSection article')
     for i in range(articles.count()):
         article = articles.nth(i)
         # Same digits may identify an unrelated application: inspect publication field only.
         field = article.locator('li').filter(has=page.locator('[data-lang-id="srlt.kpa.pn"]'))
-        if field.count() == 1 and re.search(r'(?<!\d)' + number + r'(?!\d)', field.inner_text()):
+        if field.count() != 1:
+            unreadable = True
+            evidence.append(dict(result_index=i+1, field_count=field.count(), state='unreadable'))
+            continue
+        text = field.inner_text()
+        if not re.search(r'\d{6,}', re.sub(r'[-\s]', '', text)):
+            unreadable = True
+            evidence.append(dict(result_index=i+1, publication_field=text, state='unreadable'))
+            continue
+        match = re.search(r'(?<!\d)' + re.escape(number) + r'(?!\d)(?:\s*\(?\s*([ABUY]\d*)\s*\)?)?', text, re.I)
+        kind = match[1].upper() if match and match[1] else ''
+        state = 'other_publication' if not match else ('wrong_kind' if patent.kind and kind and kind != patent.kind else 'number_match')
+        evidence.append(dict(result_index=i+1, publication_field=text, observed_kind=kind, state=state))
+        if state == 'number_match':
             candidates.append(article)
-    if len(candidates) != 1:
+    if unreadable:
+        kpa_evidence(work, patent, 'unreadable_publication_field', evidence, exact_candidates=len(candidates))
+        raise CollectionError('KPA 공고번호 필드를 읽을 수 없습니다. kpa-candidates.json을 확인하세요.')
+    if not candidates:
+        kpa_evidence(work, patent, 'no_exact_publication', evidence, exact_candidates=0)
+        return collect_domestic_for_translation(page, patent, work, args)
+    if len(candidates) > 1:
+        kpa_evidence(work, patent, 'ambiguous_candidates', evidence, exact_candidates=len(candidates))
         raise CollectionError('KPA 공고번호 정확 일치 후보가 단일하지 않습니다.')
     candidates[0].get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
     pane = page.locator('#mainResultDetail')
     pub = pane.locator('tr').filter(has_text='공고번호(일자)')
     pub.wait_for(state='visible')
     pub_text = pub.locator('td').inner_text()
-    publication = resolve(patent, extract(pub_text, country='KR'))
+    publications = extract(pub_text, country='KR')
+    same_number = [p for p in publications if p.country == patent.country and p.number == patent.number]
+    if patent.kind and same_number and all(p.kind and p.kind != patent.kind for p in same_number):
+        kpa_evidence(work, patent, 'detail_wrong_kind', evidence, selected_publication_field=pub_text)
+        return collect_domestic_for_translation(page, patent, work, args)
+    kpa_evidence(work, patent, 'selected_candidate', evidence, exact_candidates=1, selected_publication_field=pub_text)
+    publication = resolve(patent, publications)
     app_text = pane.locator('tr').filter(has_text='출원번호(일자)').locator('td').inner_text()
     app_number = re.search(r'\d{13}', app_text)
     if not app_number:
@@ -252,7 +286,7 @@ class TranslationRequired(CollectionError):
         self.diagnostics = [{'code':'TRANSLATION_REVIEW_REQUIRED', 'source':'KIPRIS',
             'publication':publication.key, 'missing_fields':['english_abstract'],
             'review_packet':str(packet.resolve()), 'original_download_verified':True}]
-        super().__init__('KPA 결과 없음: 국내 서지·공식 원문 수집 완료. Codex가 원문 초록 유무를 확인하고 번역/요약 검토 후 --ai-manifest로 재개: '+str(packet.resolve()))
+        super().__init__('KPA 동일 공보 영문자료 없음: 국내 서지·공식 원문 수집 완료. Codex가 원문 초록 유무를 확인하고 번역/요약 검토 후 --ai-manifest로 재개: '+str(packet.resolve()))
 
 
 def collect_domestic_for_translation(page, patent, work, args):
@@ -260,7 +294,7 @@ def collect_domestic_for_translation(page, patent, work, args):
     import json
     from .pdf_merger import sha256
     if not patent.kind:
-        raise CollectionError('KPA 결과 없음: 국내 번역 보완에는 공보 종별을 먼저 확정해야 합니다.')
+        raise CollectionError('KPA 동일 공보 영문자료 없음: 국내 번역 보완에는 공보 종별을 먼저 확정해야 합니다.')
     navigate(page, START, args.retries)
     dialog = page.locator('#modalSearchDetail[aria-hidden="false"]')
     if dialog.count() and dialog.is_visible():
@@ -322,7 +356,7 @@ def collect_domestic_for_translation(page, patent, work, args):
         original_pages=parts.original_pages, viewer_pages=parts.original_pages,
         identity_verified=False, full_document_verified=False, source_text_verified=False,
         translation_reviewed=False, review_note='', bibliography=[],
-        bibliography_note='', official_english_unavailable_reason='KPA exact query returned no result; domestic Korean record and official publication collected.',
+        bibliography_note='', official_english_unavailable_reason='Exact KPA publication unavailable; domestic Korean record and official publication collected. See kpa-candidates.json when present.',
         review_instructions=('Compare the original abstract and translate it.' if source_text else
             'Check all original pages for an abstract (render scans when needed). If found, use ai_translation/source_kind abstract/source_abstract_available true. Only if the original has no abstract, use ai_summary/source_kind description/source_abstract_available false. Record actual source pages and source text; write and review the English translation or summary.'))
     packet = work/'translation-review.json'
