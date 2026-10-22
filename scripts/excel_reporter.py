@@ -16,6 +16,7 @@ class Row:
     role: str = "publication"
     input_error: str = ""
     exclusion: str = ""
+    role_source: str = "default"
 
 
 HEADERS = {"특허번호", "공보번호", "공개번호", "등록번호", "출원번호", "patentno", "patentnumber", "publicationno", "publicationnumber", "applicationno", "applicationnumber"}
@@ -25,7 +26,18 @@ def header_key(value):
     return re.sub(r"[\s._()]+", "", str(value or "")).lower()
 
 
-def read_table(path, column=None, sheet=None, country=None):
+def header_role(label):
+    key = header_key(label)
+    if key.startswith(('출원번호', 'applicationno', 'applicationnumber')):
+        return 'application'
+    if key.startswith(('공보번호', '공개번호', '등록번호', 'publicationno', 'publicationnumber')):
+        return 'publication'
+    return None  # Generic/custom headers do not assert a number type.
+
+
+def read_table(path, column=None, sheet=None, country=None, role=None):
+    if role not in (None, 'publication', 'application'):
+        raise ValueError('잘못된 번호 유형: ' + str(role))
     path = Path(path)
     if path.suffix.lower() == ".xlsx":
         wb = load_workbook(path, data_only=False)
@@ -56,8 +68,9 @@ def read_table(path, column=None, sheet=None, country=None):
         for i, line in enumerate(values[:30]):
             hits = [j for j, v in enumerate(line) if (header_key(v) == header_key(column) if column else header_key(v) in HEADERS)]
             if hits:
-                # Publication headers take precedence over application headers.
-                hits.sort(key=lambda j: "출원" in str(line[j]) or "application" in str(line[j]).lower())
+                # Prefer a matching typed column when an explicit role is given.
+                hits.sort(key=lambda j: (0 if header_role(line[j]) == role else
+                    1 if header_role(line[j]) is None else 2) if role else header_role(line[j]) == 'application')
                 chosen = (i, hits[0], str(line[hits[0]]))
                 break
         if chosen is None and not column:
@@ -68,7 +81,9 @@ def read_table(path, column=None, sheet=None, country=None):
                     break
         h, c, label = chosen if chosen else (-1, None, "")
         layouts[name] = (h, width)
-        role = "application" if "출원" in label or "application" in label.lower() else "publication"
+        detected_role = header_role(label)
+        chosen_role = role or detected_role or 'publication'
+        role_source = 'explicit' if role else ('header' if detected_role else 'default')
         for i, line in enumerate(values, 1):
             if not any(v is not None and str(v).strip() for v in line):
                 continue
@@ -80,7 +95,9 @@ def read_table(path, column=None, sheet=None, country=None):
                          "확인된 번호 헤더 앞의 안내행" if i < h + 1 else "")
             error = (f"지정한 컬럼을 찾을 수 없습니다: {column}" if column else
                      "특허번호 컬럼을 찾지 못했습니다. --column / --country를 확인하세요.") if c is None else ""
-            rows.append(Row(name, i, str(value if value is not None else ""), role, error, exclusion))
+            if role and detected_role and role != detected_role:
+                error = f'명시한 --role {role}과 헤더 {label}({detected_role})가 충돌합니다. 번호 유형과 --column/헤더를 확인하세요.'
+            rows.append(Row(name, i, str(value if value is not None else ""), chosen_role, error, exclusion, role_source))
     if not rows:
         raise ValueError("특허번호 컬럼을 찾지 못했습니다. --column / --country를 지정하세요.")
     return sheets, layouts, rows

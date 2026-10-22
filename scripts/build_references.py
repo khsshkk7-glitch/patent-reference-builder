@@ -34,7 +34,8 @@ def parser():
     p.add_argument("--column")
     p.add_argument("--sheet")
     p.add_argument("--country", help="국가코드 없는 셀에 적용할 명시적 국가")
-    p.add_argument("--role", choices=["publication", "application"], default="publication")
+    p.add_argument("--role", choices=["publication", "application"], default=None,
+                   help="명시한 번호 유형. 생략 시 파일은 헤더로 판단하고 채팅/헤더 없음은 공보번호")
     p.add_argument("--source", choices=["auto", "espacenet", "kipris"], default="auto")
     p.add_argument("--manifest", type=Path, help="검토된 로컬 PDF 및 출처 manifest JSON")
     p.add_argument('--ai-manifest', type=Path, help='원문 대조한 AI 번역/요약 또는 사이트 기계번역 보완 manifest')
@@ -59,18 +60,19 @@ def parser():
 
 def input_rows(args):
     if args.input:
-        return read_table(args.input, args.column, args.sheet, args.country)
+        return read_table(args.input, args.column, args.sheet, args.country, args.role)
     # Preserve invalid entries as failures instead of silently dropping them.
     import re
     chunks = [s.strip() for s in re.split(r"[,;\n]+", args.text) if s.strip()]
     rows = []
+    role = args.role or 'publication'
     for chunk in chunks:
-        patents = extract(chunk, args.role, args.country)
+        patents = extract(chunk, role, args.country)
         if len(patents) > 1:
             base = len(rows) + 2
-            rows.extend(Row("입력", base + i, p.key, args.role) for i, p in enumerate(patents))
+            rows.extend(Row("입력", base + i, p.key, role, role_source='explicit' if args.role else 'default') for i, p in enumerate(patents))
         else:
-            rows.append(Row("입력", len(rows) + 2, chunk, args.role))
+            rows.append(Row("입력", len(rows) + 2, chunk, role, role_source='explicit' if args.role else 'default'))
     return {"입력": [("특허번호",)] + [(r.value,) for r in rows]}, {"입력": (0, 1)}, rows
 
 
@@ -161,6 +163,7 @@ def run(args):
         plan = [{"sheet": r.sheet, "row": r.index, "input": r.value, "patent": asdict(p) if p else None,
                  "query": p.query if p else None, "filename": p.filename if p else None, "error": None if r.exclusion else e,
                  "status": "제외" if r.exclusion else ("처리 예정" if p else "실패"),
+                 "input_role":r.role, "input_role_source":r.role_source,
                  "note": r.exclusion or e or ""} for r, p, e in parsed]
         (args.out / "input-plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
         (args.out / "input-accounting.json").write_text(json.dumps(input_accounting(rows, plan), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -194,6 +197,8 @@ def run(args):
         for index, (row, patent, error) in enumerate(parsed, 1):
             h, width = layouts[row.sheet]
             result = {"sheet": row.sheet, "row": row.index, "input": row.value, "status": "실패",
+                      "input_role":row.role, "input_role_source":row.role_source,
+                      "normalized_input":patent.key if patent else None, "search_query":patent.query if patent else None,
                       "report_row":row.index + (1 if h < 0 else 0), "report_start_column":width + 1}
             if row.exclusion:
                 result.update(status='제외', note=row.exclusion, complete_reference=False)
@@ -278,6 +283,9 @@ def run(args):
                     result['diagnostics'] = exc.diagnostics
                     result['error_code'] = exc.diagnostics[0]['code']
                     result['missing_fields'] = sorted({f for d in exc.diagnostics for f in d.get('missing_fields',[])})
+            if patent and result.get('output_path'):
+                role_label = '출원번호' if row.role == 'application' else '공보번호'
+                result['note'] += ' | 입력번호 유형: ' + role_label
             if patent and patent.key in getattr(args,'download_metrics',{}):
                 result['download_metrics'] = dict(args.download_metrics[patent.key])
             results.append(result)

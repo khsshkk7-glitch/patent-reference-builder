@@ -34,6 +34,18 @@ KPA 인쇄본 + 같은 공보의 Espacenet 원문으로 자동 복구하며, Esp
 `.xlsx`: openpyxl, `.xls`: pandas + xlrd, CSV: UTF-8 BOM/CP949와 쉼표/탭/세미콜론을 지원한다.
 첫 30행에서 헤더를 찾고, 헤더가 없으면 최초 유효 특허번호가 있는 컬럼을 찾는다.
 여러 번호 컬럼이면 공개/공보 등 헤더를 출원번호보다 우선한다. `--column`으로 명시할 수 있다.
+`--role`을 생략하면 출원번호 헤더는 application, 공개/공보/등록 헤더는 publication으로 판단한다.
+헤더 없는 파일·일반 특허번호 헤더·채팅의 기본값은 publication이다. `--role application` 또는 `--role publication`을
+명시하면 CSV/XLSX/XLS와 채팅에 모두 적용한다. 번호 헤더와 유형이 충돌하면 해당 행을 실패로 기록하고 검색하지 않는다.
+명시한 유형에 맞는 번호 컬럼이 함께 있으면 그 컬럼을 우선 선택한다. `--column` 명시는 컬럼 선택에 우선하며 유형 충돌 검사는 유지한다.
+`특허번호`/`Patent No.` 또는 사용자 지정의 일반 헤더는 유형을 단정하지 않으므로 명시한 `--role`을 적용할 수 있다.
+dry-run/결과 JSON의 `input_role`, `input_role_source`(explicit/header/default)를 확인한다. 결과에는 정규화 입력번호와
+`search_query`도 보존한다. application은 `ap=` 검색을 사용하며 검토된 출원/공보 매핑 없이 공보번호로 임의 전환하지 않는다.
+
+```sh
+python scripts/build_references.py --input list.csv --role application --dry-run --out output/check
+```
+
 모든 시트를 읽으며 `--sheet`로 제한할 수 있다. 결과 파일은 원본 행·시트를 **값으로 복사**한다.
 서식·매크로·차트 복제는 하지 않는다. 원본 수식은 실행되지 않는 텍스트로 보존한다.
 빈 번호가 있는 데이터행과 파싱 실패행도 실패 사유를 남긴다. 완전히 빈 행은 처리하지 않는다.
