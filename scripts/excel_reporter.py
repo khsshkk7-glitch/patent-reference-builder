@@ -14,6 +14,8 @@ class Row:
     index: int
     value: str
     role: str = "publication"
+    input_error: str = ""
+    exclusion: str = ""
 
 
 HEADERS = {"특허번호", "공보번호", "공개번호", "등록번호", "출원번호", "patentno", "patentnumber", "publicationno", "publicationnumber", "applicationno", "applicationnumber"}
@@ -49,8 +51,7 @@ def read_table(path, column=None, sheet=None, country=None):
         raise ValueError("시트를 찾을 수 없습니다: " + sheet)
     rows, layouts = [], {}
     for name, values in sheets.items():
-        if sheet and name != sheet:
-            continue
+        width = max((len(v) for v in values), default=0)
         chosen = None
         for i, line in enumerate(values[:30]):
             hits = [j for j, v in enumerate(line) if (header_key(v) == header_key(column) if column else header_key(v) in HEADERS)]
@@ -59,25 +60,27 @@ def read_table(path, column=None, sheet=None, country=None):
                 hits.sort(key=lambda j: "출원" in str(line[j]) or "application" in str(line[j]).lower())
                 chosen = (i, hits[0], str(line[hits[0]]))
                 break
-        if chosen is None and column:
-            raise ValueError(f"{name}: 지정한 컬럼을 찾을 수 없습니다: {column}")
-        if chosen is None:
-            width = max((len(v) for v in values), default=0)
+        if chosen is None and not column:
             for j in range(width):
                 hit = next((i for i, line in enumerate(values) if j < len(line) and extract(line[j] or "", country=country)), None)
                 if hit is not None:
-                    chosen = (hit - 1, j, "")
+                    chosen = (-1, j, "")
                     break
-        if chosen is None:
-            continue
-        h, c, label = chosen
-        layouts[name] = (h, max((len(v) for v in values), default=0))
+        h, c, label = chosen if chosen else (-1, None, "")
+        layouts[name] = (h, width)
         role = "application" if "출원" in label or "application" in label.lower() else "publication"
-        for i, line in enumerate(values[h + 1:], h + 2):
+        for i, line in enumerate(values, 1):
             if not any(v is not None and str(v).strip() for v in line):
                 continue
-            value = line[c] if c < len(line) else ""
-            rows.append(Row(name, i, str(value or ""), role))
+            # Only a recognized header is omitted; never infer a header from a patent hit.
+            if i == h + 1:
+                continue
+            value = (line[c] if c < len(line) else "") if c is not None else " | ".join(str(v) for v in line if v is not None)
+            exclusion = (f"--sheet {sheet} 지정으로 대상 외 시트" if sheet and name != sheet else
+                         "확인된 번호 헤더 앞의 안내행" if i < h + 1 else "")
+            error = (f"지정한 컬럼을 찾을 수 없습니다: {column}" if column else
+                     "특허번호 컬럼을 찾지 못했습니다. --column / --country를 확인하세요.") if c is None else ""
+            rows.append(Row(name, i, str(value if value is not None else ""), role, error, exclusion))
     if not rows:
         raise ValueError("특허번호 컬럼을 찾지 못했습니다. --column / --country를 지정하세요.")
     return sheets, layouts, rows

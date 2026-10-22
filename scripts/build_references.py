@@ -1,6 +1,7 @@
 """CLI: python -m scripts.build_references --text 'JP 2006-198019 A' --out output"""
 import argparse
 from contextlib import nullcontext
+from collections import Counter
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
@@ -76,6 +77,11 @@ def load_json(path):
     return json.loads(path.read_text(encoding="utf-8-sig")) if path else {}
 
 
+def input_accounting(rows, results):
+    return dict(input_rows=len(rows), recorded_rows=len(results),
+                remaining_rows=len(rows)-len(results), statuses=dict(Counter(r['status'] for r in results)))
+
+
 def collect(page, patent, work, args):
     collectors = [kipris_collector] if args.source == "kipris" else [espacenet_collector]
     if patent.country == "KR" and args.source != "kipris":
@@ -142,6 +148,9 @@ def run(args):
     results, cache = [], {}
     parsed = []
     for row in rows:
+        if row.exclusion or row.input_error:
+            parsed.append((row, None, row.exclusion or row.input_error))
+            continue
         try:
             patent = one(row.value, role=row.role, country=args.country)
             parsed.append((row, patent, None))
@@ -149,15 +158,21 @@ def run(args):
             parsed.append((row, None, str(exc)))
     if args.dry_run:
         plan = [{"sheet": r.sheet, "row": r.index, "input": r.value, "patent": asdict(p) if p else None,
-                 "query": p.query if p else None, "filename": p.filename if p else None, "error": e} for r, p, e in parsed]
+                 "query": p.query if p else None, "filename": p.filename if p else None, "error": None if r.exclusion else e,
+                 "status": "제외" if r.exclusion else ("처리 예정" if p else "실패"),
+                 "note": r.exclusion or e or ""} for r, p, e in parsed]
         (args.out / "input-plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        (args.out / "input-accounting.json").write_text(json.dumps(input_accounting(rows, plan), ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(plan, ensure_ascii=False, indent=2))
-        return 0 if all(p for _, p, _ in parsed) else 1
+        return 0 if all(p or r.exclusion for r, p, _ in parsed) else 1
     report = args.out / f"처리결과_{stamp}.xlsx"
     summary = args.out / f"처리결과_{stamp}.json"
     def save():
         summary.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         write_report(report, sheets, layouts, results)
+        accounting = input_accounting(rows, results)
+        (run_dir / 'input-accounting.json').write_text(json.dumps(accounting, ensure_ascii=False, indent=2), encoding='utf-8')
+    save()  # Record total/remaining input even before a browser starts.
     need_browser = any(p and p.key not in manifest and p.key not in ai_manifest for _, p, _ in parsed)
     if args.original_method == 'ops' and need_browser:
         from .ops_client import configured
@@ -177,6 +192,12 @@ def run(args):
     try:
         for index, (row, patent, error) in enumerate(parsed, 1):
             result = {"sheet": row.sheet, "row": row.index, "input": row.value, "status": "실패"}
+            if row.exclusion:
+                result.update(status='제외', note=row.exclusion, complete_reference=False)
+                results.append(result)
+                save()
+                print(f"[{index}/{len(parsed)}] 제외: {row.sheet} 행 {row.index} | {row.exclusion}", flush=True)
+                continue
             try:
                 if error:
                     raise ValueError(error)
@@ -272,7 +293,12 @@ def run(args):
     failures = sum(r['status'] == '실패' for r in results)
     pending = sum(r['status'] == '번역 검토 대기' for r in results)
     identity_pending = sum(r['status'] == '원문 식별 검수 대기' for r in results)
-    print(json.dumps({"success": successes, "original_only": originals, 'ai_assisted':ai_assisted, 'site_translated':site_translated, "failed": failures,
+    excluded = sum(r['status'] == '제외' for r in results)
+    accounted = successes + originals + ai_assisted + site_translated + failures + pending + identity_pending + excluded
+    if accounted != len(rows) or len(results) != len(rows):
+        raise ValueError('입력 행과 처리결과 집계가 일치하지 않습니다.')
+    print(json.dumps({"input_rows":len(rows), "recorded_rows":len(results), "excluded":excluded, "accounting":str(run_dir / 'input-accounting.json'),
+        "success": successes, "original_only": originals, 'ai_assisted':ai_assisted, 'site_translated':site_translated, "failed": failures,
         "translation_pending": pending, "identity_pending":identity_pending, "output_directory": str(args.out), "report": str(report),
         "files": sorted({r["output_path"] for r in results if r.get('output_path') and r['status'] != '실패'})}, ensure_ascii=False))
     return 0 if failures == 0 and pending == 0 and identity_pending == 0 else 1

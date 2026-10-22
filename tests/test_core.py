@@ -96,13 +96,15 @@ class Files(unittest.TestCase):
         wb.create_sheet('참고').append(['보존'])
         wb.save(path)
         sheets,layouts,rows=read_table(path)
-        self.assertEqual([r.index for r in rows],[3,4,5])
+        self.assertEqual([(r.sheet,r.index) for r in rows],[('목록',1),('목록',3),('목록',4),('목록',5),('참고',1)])
+        self.assertTrue(rows[0].exclusion)
+        self.assertTrue(rows[-1].input_error)
         result=self.root/'result.xlsx'
         write_report(result,sheets,layouts,[dict(sheet='목록',row=4,status='실패',note='잘못된 번호')])
         out=load_workbook(result)
         self.assertEqual(out['목록']['D4'].value,'실패')
         self.assertEqual(out['목록']['G4'].value,'잘못된 번호')
-        self.assertEqual(out['참고']['A1'].value,'보존')
+        self.assertEqual(out['참고']['A2'].value,'보존')
         self.assertEqual(load_workbook(path)['목록'].max_column,3)
 
     def test_headerless_csv_and_formula_safety(self):
