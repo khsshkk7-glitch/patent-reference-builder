@@ -6,7 +6,7 @@ from .collector_common import Collected, print_biblio, english_abstract
 from .pdf_merger import inspect_pdf
 from .browser_session import CollectionError, MetadataUnavailable, HumanRequired, HumanWaitTimeout, navigate
 from .download_wait import wait_for_download
-from .original_identity import verify_original
+from .original_identity import verify_original, IdentityReviewRequired
 
 
 START = "https://worldwide.espacenet.com/advancedSearch?locale=en_EP"
@@ -138,6 +138,10 @@ def download_original(page, publication, work, args):
             verify_original(publication,result[0],count,work,'Espacenet + EPO OPS',biblio_url,result[2])
             metrics.update(status='downloaded',pages=count)
             return result
+        except IdentityReviewRequired:
+            # Receipt succeeded; an image-only cover still requires identity review.
+            metrics.update(status='identity_review_pending',pages=count)
+            raise
         except Exception:
             metrics['status']='failed'
             # A quota/auth/data failure must not silently switch to CAPTCHA.

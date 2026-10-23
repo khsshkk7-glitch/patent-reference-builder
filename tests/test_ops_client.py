@@ -20,6 +20,29 @@ class FastClient(OpsClient):
 
 
 class OpsTests(unittest.TestCase):
+    def test_received_scan_pending_identity_is_not_download_failure(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from scripts.espacenet_collector import download_original
+        from scripts.original_identity import IdentityReviewRequired, DocumentIdentityMismatch
+        pub = one('JP2006198019A')
+        page = MagicMock()
+        page.url = 'https://worldwide.espacenet.com/record'
+        page.locator.return_value.inner_text.return_value = pub.key
+        page.locator.return_value.text_content.return_value = '1 of 9'
+        for error, status in ((IdentityReviewRequired(pub, Path('review.json')), 'identity_review_pending'),
+                              (DocumentIdentityMismatch('wrong cover'), 'failed')):
+            args = SimpleNamespace(original_method='ops', ops_client=MagicMock())
+            args.ops_client.download.return_value = (Path('original.pdf'),9,'https://ops.epo.org/images')
+            with patch('scripts.espacenet_collector.verify_original',side_effect=error):
+                with self.assertRaises(type(error)):
+                    download_original(page,pub,Path('.'),args)
+            metrics = args.download_metrics[pub.key]
+            self.assertEqual(metrics['status'],status)
+            self.assertEqual(metrics['captcha_prompts'],0)
+            if status == 'identity_review_pending': self.assertEqual(metrics['pages'],9)
+            args.ops_client.download.assert_called_once()
+
     def test_explicit_ops_without_key_stops_before_browser(self):
         from scripts.build_references import parser, run
         with tempfile.TemporaryDirectory() as tmp, patch.dict('os.environ',{'EPO_OPS_KEY':'','EPO_OPS_SECRET':''}), \
