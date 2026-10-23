@@ -183,7 +183,9 @@ def run(args):
         if args.source == 'kipris':
             raise ValueError('--original-method ops는 Espacenet 원문용이며 --source kipris와 함께 사용하지 않습니다.')
         if not configured():
-            raise ValueError('OPS API 키 미설정. 로컬에서 scripts/run_with_ops.py를 사용하거나 EPO_OPS_KEY/EPO_OPS_SECRET을 설정하세요.')
+            raise ValueError('OPS API 키 미설정. python scripts/ops_environment.py --status로 존재 여부만 확인하고, '
+                'Windows는 --setup으로 사용자 환경변수를 등록한 뒤 Codex를 재시작하세요. '
+                '이번 실행에서만 입력하려면 scripts/run_with_ops.py를 사용하세요. 키를 채팅에 보내지 마세요.')
     context = browser_session(args) if need_browser else nullcontext(None)
     browser_error = None
     context_entered = False

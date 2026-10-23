@@ -18,16 +18,20 @@ python -m venv .venv
 
 ```sh
 python scripts/build_references.py --text "KR1020200137353A, JP 2006-198019 A" --out output/check --dry-run
-python scripts/build_references.py --text "特開2006-198019" --headed --channel chrome --interactive --human-timeout 300
-python scripts/build_references.py --input "list.xlsx" --zip --headed --channel chrome --interactive --human-timeout 300
+python scripts/build_references.py --text "特開2006-198019" --original-method ops --native-chrome --headed
+python scripts/build_references.py --input "list.xlsx" --original-method ops --zip --native-chrome --headed
 python scripts/build_references.py --input "list.xls" --column "공개번호" --country KR --out output/batch-kr --source kipris --headed --channel chrome --interactive
-python scripts/build_references.py --input "list.csv" --out output/csv --profile "/absolute/path/reference-profile" --headed --channel chrome --interactive
+python scripts/build_references.py --input "list.csv" --original-method ops --out output/csv --profile "/absolute/path/reference-profile" --headed --channel chrome
 ```
 
-온라인 Espacenet 수집은 위 Chrome 사용자 확인 명령을 우선 사용한다.
+스킬 기본 Espacenet 운영은 저장된 `EPO_OPS_KEY` / `EPO_OPS_SECRET`을 쓰는 `--original-method ops`다.
+누락·인증 오류 때는 [환경변수 설정·복구](ops-setup.md#환경변수를-기본으로-사용)를 안내한다.
+`python scripts/ops_environment.py --status`는 값 없이 존재 여부만 확인하고, Windows의 `--setup`은 로컬 숨김 입력으로 등록·교체한다.
+저장 후에는 Codex를 완전히 종료하고 재시작한다. 값이 있는 정상 실행에서 키를 다시 요청하지 않는다.
+아래 설명은 사용자가 브라우저 원문 다운로드를 선택한 경우의 Chrome 사용자 확인 흐름이다.
 보안문자가 뜨면 사용자가 열린 Chrome에서 직접 입력하고 Submit을 누르면 된다. 다운로드 단계에서는 터미널 Enter 없이
 자동으로 다음 단계로 진행한다. 단건 JP 샘플의 전체 흐름을 검증했으며, 다건은 문헌마다 사용자 입력이 필요할 수 있다.
-완전 무인 실행은 운영 목표에서 제외했다. KIPRIS 국내 전문 연결이 시간 초과되면
+공식 API로 원문 보안문자 부담을 줄이지만 모든 사이트·문헌의 완전 무인 실행을 보장하지 않는다. KIPRIS 국내 전문 연결이 시간 초과되면
 KPA 인쇄본 + 같은 공보의 Espacenet 원문으로 자동 복구하며, Espacenet 보안문자는 사용자가 입력한다.
 복합 출처는 결과에 표시한다. KIPRIS 자체 오류와 복구 경로 검증 상태는 이슈 #2 및 검증 기록을 따른다.
 

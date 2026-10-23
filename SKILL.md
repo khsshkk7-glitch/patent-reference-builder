@@ -15,15 +15,20 @@ description: 특허번호를 채팅 또는 엑셀·CSV로 받아 Espacenet/KIPRI
 [실행 방법](references/usage.md)을 읽는다. Python 3.10 이상과 requirements.txt가 필요하다.
 
 ```sh
-python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --native-chrome --headed --interactive --human-timeout 300
-python scripts/build_references.py --input "/absolute/path/list.xlsx" --zip --native-chrome --headed --interactive --human-timeout 300
+python scripts/build_references.py --text "KR 10-2020-0137353, JP 2006-198019 A" --original-method ops --native-chrome --headed
+python scripts/build_references.py --input "/absolute/path/list.xlsx" --original-method ops --zip --native-chrome --headed
 ```
 
 사용자가 다른 저장 위치를 지정하지 않으면 `--out`을 생략하여 OS에 설정된 사용자 다운로드 폴더에 저장한다.
 Windows는 변경·리디렉션된 다운로드 위치도 반영한다. 사용자명이나 저장소 내부 경로를 저장 위치로 고정하지 않는다.
 완료 시 결과 JSON의 `output_path`에 있는 실제 절대 경로로 클릭 가능한 최종 파일 링크를 안내한다.
 
-온라인 수집은 **Chrome 창을 열고 보안문자만 사용자가 입력하는 방식**을 기본 운영 흐름으로 사용한다.
+Espacenet 원문은 **저장된 사용자 환경변수 `EPO_OPS_KEY` / `EPO_OPS_SECRET`을 사용하는 OPS 방식**을 기본 운영 흐름으로 삼는다.
+환경변수가 있으면 매번 키를 요청하지 않고 `--original-method ops`로 실행한다. 누락 또는 인증 오류는
+[환경변수 기본 설정·복구](references/ops-setup.md#환경변수를-기본으로-사용)에 따라 안내하며, 값은 채팅으로 받거나 출력하지 않는다.
+설정 여부만 확인하려면 `python scripts/ops_environment.py --status`, Windows 등록·교체는 `--setup`을 사용한다.
+사용자 환경에는 있지만 현재 프로세스에는 없으면 먼저 Codex 완전 종료·재시작을 안내하며 같은 값을 반복 입력받지 않는다.
+사용자가 브라우저 다운로드를 원하면 `--original-method browser --interactive`를 사용하고 보안문자만 사용자에게 맡긴다.
 KIPRIS를 사용할 KR 단건·혼합 배치는 `--native-chrome --headed`로 실행한다. 설치된 일반 Chrome을
 별도 작업용 프로필로 열고 로컬로 연결하는 지원 모드이며, 기존 `--cdp`/`--profile`과 함께 지정하지 않는다.
 KIPRIS 직접 수집을 검증하거나 Espacenet에 없는 문헌을 처리할 때는 다음처럼 대체 수집을 금지한다.
@@ -35,8 +40,9 @@ python scripts/build_references.py --text "KR20200137353A" --source kipris --nat
 Espacenet 다운로드 때 보안문자가 나오면 사용자가 숫자를 입력하고 Submit을 누르도록 안내한다.
 같은 브라우저에서 파일 수신 후 다운로드·검증·병합을 자동으로 이어가므로 이 단계에서는 터미널 Enter가 필요 없다.
 문헌마다 보안문자가 다시 나올 수 있다. 이슈 #6에 따라 [공식 OPS 연결](references/ops-setup.md)을 추가했다.
-OPS 키가 설정돼 있으면 `--original-method auto`가 Espacenet 원문 다운로드에 공식 API를 우선 사용한다.
-키가 없으면 기존 브라우저를 사용한다. 2026-10-23 사용자 로컬 숨김 입력으로 OPS 인증 및 JP2006198019A 원문 9페이지 수신을 검증했다.
+일반 CLI의 `--original-method auto`도 키가 있으면 OPS를 우선 사용하고 없으면 기존 브라우저를 사용한다.
+스킬 기본 흐름은 명시적 `ops`이므로 키가 없으면 설정 안내 후 재개하며 자동으로 보안문자 방식으로 바꾸지 않는다.
+2026-10-23 사용자 로컬 숨김 입력으로 OPS 인증 및 JP2006198019A 원문 9페이지 수신을 검증했다.
 이미지형 원문의 표지 문자를 자동 식별하지 못하면 Codex가 기존 식별·최종 검수 절차로 이어간다.
 이때 다운로드 기록의 `identity_review_pending`은 원문 수신 후 식별 검수 대기이며 전송 실패가 아니다.
 서지·뷰어 웹 접근과 이미지 검수·키 초기 입력은 남으므로 모든 문헌의 완전 무인화 완료로 설명하지 않는다.

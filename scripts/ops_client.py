@@ -34,6 +34,16 @@ def request_bytes(url, headers, data=None, timeout=40):
             return body
     except HTTPError as exc:
         # Never echo request headers, token responses or credentials.
+        if url == TOKEN and exc.code in (400, 401):
+            raise CollectionError(f'OPS 인증 실패 (HTTP {exc.code}): EPO_OPS_KEY/EPO_OPS_SECRET을 확인하세요. '
+                'Windows는 python scripts/ops_environment.py --setup에서 두 값을 교체하고 Codex를 재시작하세요. '
+                '키를 채팅에 보내지 마세요. 자동 재시도하지 않습니다.') from None
+        if exc.code == 403:
+            raise CollectionError('OPS HTTP 403: 계정 승인·앱 API 권한·서비스 이용 조건을 확인하세요. '
+                '키 오류로 단정하지 말고 계정·권한을 먼저 확인합니다. 자동 재시도하지 않습니다.') from None
+        if exc.code == 429:
+            raise CollectionError('OPS HTTP 429: 이용량·요청 속도 제한입니다. 키를 교체하지 말고 '
+                '이용량·재개 가능 시간을 확인하세요. 자동 재시도하지 않습니다.') from None
         raise CollectionError(f'OPS HTTP {exc.code}: 인증·이용량·서비스 상태를 확인하세요. 자동 재시도하지 않습니다.') from None
     except (URLError, TimeoutError):
         raise CollectionError('OPS 네트워크 연결 실패 또는 시간 초과') from None
@@ -73,7 +83,8 @@ class OpsClient:
 
     def authenticate(self):
         if not configured():
-            raise CollectionError('OPS API 키 미설정: EPO_OPS_KEY/EPO_OPS_SECRET을 로컬 환경에 설정하세요. 키를 채팅에 보내지 마세요.')
+            raise CollectionError('OPS API 키 미설정: EPO_OPS_KEY/EPO_OPS_SECRET을 사용자 환경변수에 설정하세요. '
+                'Windows는 python scripts/ops_environment.py --setup 실행 후 Codex를 재시작하세요. 키를 채팅에 보내지 마세요.')
         if self.token and time.monotonic()<self.expires:
             return
         basic = base64.b64encode((os.environ['EPO_OPS_KEY']+':'+os.environ['EPO_OPS_SECRET']).encode()).decode()
