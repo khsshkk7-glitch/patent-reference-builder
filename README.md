@@ -1,5 +1,7 @@
 # patent-reference-builder · 특허 참증 PDF 제작 스킬
 
+**버전 1.0 · v1.0.0** — 2026-10-24 · [릴리스](https://github.com/khsshkk7-glitch/patent-reference-builder/releases/tag/v1.0.0) · [변경 이력](CHANGELOG.md)
+
 특허번호를 채팅이나 엑셀로 전달하면 **영문 서지사항·영문 초록 → 동일 공보 원문 전문** 순서로 병합하는 Codex 스킬입니다. 최종 PDF는 특허번호를 파일명으로 사용해 사용자의 **다운로드 폴더**에 저장합니다.
 
 주 수집원은 Espacenet이며, 한국 문헌은 KIPRIS를 보조 수집원으로 사용합니다. 원문 다운로드에는 공식 EPO OPS API를 우선 사용합니다. API 키를 사용자 환경변수에 한 번 저장하면 정상 실행에서 매번 입력할 필요가 없습니다.

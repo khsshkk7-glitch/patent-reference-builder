@@ -1,5 +1,7 @@
 ---
 name: patent-reference-builder
+metadata:
+  version: "1.0.0"
 description: 특허번호를 채팅 또는 엑셀·CSV로 받아 Espacenet/KIPRIS 영문 서지·초록과 공식 원문 공보 전문을 순서대로 병합하는 참증 PDF를 제작한다. 선행문헌·인용문헌 제출 자료 제작, 참증 작업, 참증 PDF 일괄 생성 요청에 사용한다.
 ---
 
