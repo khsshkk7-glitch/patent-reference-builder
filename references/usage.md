@@ -149,7 +149,8 @@ python scripts/jplatpat_supplement.py --text JP3102826U --source-url https://www
 
 ## AI 번역·요약을 원문과 병합
 
-현재 스킬은 영문 초록을 못 찾으면 Codex가 같은 공보 원문 초록을 번역해 보완한다.
+등록번호로 영문 초록을 못 찾으면 같은 출원의 공개번호로 KPA를 먼저 재검색한다. 공개공보 영문 초록과 요청 등록공보 원문을 결합하며,
+앞장에 두 번호·동일 출원번호를 표시하고 결과의 `biblio_provenance`에 출처를 남긴다. 공개번호 검색도 실패한 경우에만 Codex가 요청한 공보 원문 초록을 번역해 보완한다.
 원문 초록도 없으면 AI 작성 요약으로 구분한다. [AI 보완 작성·검토 JSON 및 배치 명령](ai-fallback.md)을 따른다.
 결과는 `AI 번역 보완`/`AI 요약 보완`, `ai_assisted_reference`이며 공식 자료 성공 건수와 별도로 집계한다.
 AI 보완 보고서의 `complete_reference=false`는 공식 영문 자료가 모두 갖춰진 참증이 아니라는 뜻이며 최종 검수 후에도 유지한다.
