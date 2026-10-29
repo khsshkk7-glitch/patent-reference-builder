@@ -71,6 +71,7 @@ class Collected:
     missing_fields: tuple = ()
     translation_type: str = 'official'
     ai_provenance: dict | None = None
+    biblio_provenance: dict | None = None
 
 
 def english_abstract(text):
@@ -171,4 +172,24 @@ def from_manifest(requested, entry, base):
     count = entry["original_pages"]
     if type(count) is not int or len(orig.pages) != count:
         raise CollectionError("검토된 원문 총 페이지 수 불일치")
-    return Collected(publication, b, o, count, source, entry["biblio_url"], entry["original_url"], entry["verification_note"])
+    provenance = entry.get('biblio_provenance')
+    if provenance is not None:
+        from .input_parser import one, korean_right
+        if not isinstance(provenance, dict):
+            raise CollectionError('공개공보 초록 출처 기록 형식 오류')
+        abstract_pub = one(provenance['abstract_publication'])
+        right = korean_right(publication)
+        if (provenance.get('requested_publication') != publication.key
+                or provenance.get('mapping_verified') is not True
+                or publication.country != 'KR' or not publication.kind.startswith(('B', 'Y'))
+                or abstract_pub.country != 'KR' or korean_right(abstract_pub) != right
+                or abstract_pub.kind != ('U' if right == '20' else 'A')
+                or not re.fullmatch(right + r'\d{11}', provenance.get('application', ''))
+                or not provenance.get('source_notice')):
+            raise CollectionError('등록공보·공개공보·동일 출원 매핑 검토 기록 불일치')
+        printed = ''.join(p.extract_text() or '' for p in br.pages)
+        compact = lambda value: re.sub(r'\s+', '', value)
+        if compact(provenance['source_notice']) not in compact(printed):
+            raise CollectionError('공개공보 초록의 앞장 출처 고지 누락')
+    return Collected(publication, b, o, count, source, entry["biblio_url"], entry["original_url"],
+                     entry["verification_note"], biblio_provenance=provenance)

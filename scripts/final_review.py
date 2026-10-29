@@ -15,7 +15,7 @@ from .excel_reporter import update_review_report
 
 CHECKS = ('document_identity', 'bibliographic_names', 'english_material_type', 'full_document', 'layout')
 BINDINGS = ('publication', 'material_type', 'output_path', 'sha256', 'pages', 'biblio_pages', 'original_pages',
-            'biblio_path', 'biblio_sha256', 'original_path', 'original_sha256')
+            'biblio_path', 'biblio_sha256', 'original_path', 'original_sha256', 'biblio_provenance')
 
 
 def write_json(path, value):
@@ -24,7 +24,7 @@ def write_json(path, value):
 
 def create_packet(result, path):
     path = Path(path).resolve()
-    write_json(path, dict(version=1, **{key:result[key] for key in BINDINGS}, decision='pending',
+    write_json(path, dict(version=1, **{key:(result.get(key) if key == 'biblio_provenance' else result[key]) for key in BINDINGS}, decision='pending',
         reviewer='', review_note='', checks={key:False for key in CHECKS},
         sections={key:dict(present=None, pages=[], note='') for key in ('claims', 'drawings')},
         images=[]))

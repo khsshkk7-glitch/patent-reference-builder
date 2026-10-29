@@ -250,6 +250,7 @@ def run(args):
                         success = dict(status="원문만" if args.original_only else ('사이트 기계번역 보완' if site_mode else (ai_status if ai_mode else "생성 완료")), filename=filename, **stats,
                             output_path=str(output),
                             publication=parts.publication.key, source=parts.source, biblio_url=parts.biblio_url,
+                            biblio_provenance=parts.biblio_provenance,
                             original_url=parts.original_url, note=note,
                             result_type='original_only' if args.original_only else ('site_machine_translated_reference' if site_mode else ('ai_assisted_reference' if ai_mode else 'official_reference')),
                             material_type='original_only' if args.original_only else parts.translation_type,
