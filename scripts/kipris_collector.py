@@ -5,8 +5,8 @@ Selectors are supplied from the current inspected UI; do not guess private APIs.
 import re
 import json
 from .browser_session import navigate, checkpoint, CollectionError, assert_official_url
-from .collector_common import Collected, print_biblio
-from .input_parser import extract, resolve, korean_national_number, korean_display_number
+from .collector_common import Collected, print_biblio, english_abstract
+from .input_parser import extract, resolve, one, korean_national_number, korean_display_number, korean_right
 from .pdf_merger import inspect_pdf
 
 
@@ -98,9 +98,12 @@ def kpa_evidence(work, patent, reason, candidates, **details):
     (work / 'kpa-candidates.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
-def collect(page, patent, work, args):
+def collect(page, patent, work, args, *, bibliography_only=False,
+            expected_application=None, source_notice=None):
     """Default adapter inspected on 2026-10-15; KPA then domestic full PDF."""
     if args.selectors.get('kipris'):
+        if bibliography_only:
+            raise CollectionError('공개번호 보조 검색은 현재 기본 KPA 화면에서 확인하세요.')
         return collect_configured(page, patent, work, args)
     if patent.country != 'KR':
         raise CollectionError('KIPRIS 자동 폴백 대상은 KR입니다.')
@@ -121,6 +124,8 @@ def collect(page, patent, work, args):
     }''')
     if page.locator('#resultSection .nodata-area').count():
         kpa_evidence(work, patent, 'no_results', [], exact_candidates=0)
+        if bibliography_only:
+            return None
         return collect_domestic_for_translation(page, patent, work, args)
     page.locator('#resultSection article').first.wait_for(state='visible')
     candidates, evidence, unreadable = [], [], False
@@ -149,6 +154,8 @@ def collect(page, patent, work, args):
         raise CollectionError('KPA 공고번호 필드를 읽을 수 없습니다. kpa-candidates.json을 확인하세요.')
     if not candidates:
         kpa_evidence(work, patent, 'no_exact_publication', evidence, exact_candidates=0)
+        if bibliography_only:
+            return None
         return collect_domestic_for_translation(page, patent, work, args)
     if len(candidates) > 1:
         kpa_evidence(work, patent, 'ambiguous_candidates', evidence, exact_candidates=len(candidates))
@@ -162,6 +169,8 @@ def collect(page, patent, work, args):
     same_number = [p for p in publications if p.country == patent.country and p.number == patent.number]
     if patent.kind and same_number and all(p.kind and p.kind != patent.kind for p in same_number):
         kpa_evidence(work, patent, 'detail_wrong_kind', evidence, selected_publication_field=pub_text)
+        if bibliography_only:
+            return None
         return collect_domestic_for_translation(page, patent, work, args)
     kpa_evidence(work, patent, 'selected_candidate', evidence, exact_candidates=1, selected_publication_field=pub_text)
     publication = resolve(patent, publications)
@@ -169,7 +178,17 @@ def collect(page, patent, work, args):
     app_number = re.search(r'\d{13}', app_text)
     if not app_number:
         raise CollectionError('KPA 출원번호 연결을 확인할 수 없습니다.')
+    if expected_application is not None and app_number[0] != expected_application:
+        raise CollectionError('공개공보 KPA 출원번호가 요청 등록공보의 출원번호와 다릅니다.')
     abstract = '\n'.join(pane.locator('p.txt').all_inner_texts())
+    try:
+        english_abstract(abstract)
+    except CollectionError:
+        kpa_evidence(work, patent, 'english_abstract_unavailable', evidence,
+                     selected_publication_field=pub_text)
+        if bibliography_only:
+            return None
+        return collect_domestic_for_translation(page, patent, work, args)
     biblio = work / 'biblio.pdf'
     biblio_url = page.url
     # The site's print action opens its own clean KPA print page.
@@ -179,10 +198,25 @@ def collect(page, patent, work, args):
     try:
         print_page.wait_for_load_state('domcontentloaded')
         print_page.wait_for_function('(text) => document.body && document.body.innerText.includes(text)', arg=abstract[:60])
+        if source_notice:
+            print_page.evaluate('''text => {
+                const note = document.createElement('p');
+                note.textContent = text;
+                note.setAttribute('data-reference-source-notice', 'true');
+                note.style.cssText = 'border:1px solid #555;padding:8px;font:10pt Arial';
+                document.body.prepend(note);
+            }''', source_notice)
         (work / 'kpa-print.html').write_text(print_page.content(), encoding='utf-8')
         print_biblio(print_page, 'body', abstract, biblio, scale=0.9)
+        if source_notice:
+            printed = ''.join(p.extract_text() or '' for p in inspect_pdf(biblio).pages)
+            if re.sub(r'\s+', '', source_notice) not in re.sub(r'\s+', '', printed):
+                raise CollectionError('공개공보 영문 초록 출처 고지가 인쇄본에 없습니다.')
     finally:
         print_page.close()
+    if bibliography_only:
+        return dict(publication=publication, application=app_number[0],
+                    biblio=biblio, biblio_url=biblio_url)
     from playwright.sync_api import TimeoutError as BrowserTimeout
     try:
         return collect_domestic(page, publication, app_number[0], number, biblio, biblio_url, work, args)
@@ -286,6 +320,58 @@ class TranslationRequired(CollectionError):
         super().__init__('KPA 동일 공보 영문자료 없음: 국내 서지·공식 원문 수집 완료. Codex가 원문 초록 유무를 확인하고 번역/요약 검토 후 --ai-manifest로 재개: '+str(packet.resolve()))
 
 
+def publication_mapping(patent, application_text, publication_text):
+    """Read the same domestic record's application and laid-open publication fields."""
+    if not patent.kind.startswith(('B', 'Y')):
+        return None
+    compact = lambda value: re.sub(r'[-\s]', '', value)
+    applications = re.findall(r'(?<!\d)\d{13}(?!\d)', compact(application_text))
+    publications = re.findall(r'(?<!\d)\d{13}(?!\d)', compact(publication_text))
+    if not publications:
+        return None  # No laid-open number in the confirmed domestic record.
+    if len(set(applications)) != 1 or len(set(publications)) != 1:
+        raise CollectionError('같은 출원의 공개번호·출원번호 매핑이 단일하지 않습니다.')
+    application, number = applications[0], publications[0]
+    right = korean_right(patent)
+    if not right or application[:2] != right or number[:2] != right:
+        raise CollectionError('등록공보와 출원·공개번호의 특허/실용신안 유형이 다릅니다.')
+    publication = one('KR' + number + ('U' if right == '20' else 'A'))
+    return publication, application
+
+
+def collect_publication_bibliography(page, patent, pane, work, args):
+    """Search KPA by the mapped A/U number before resorting to AI translation."""
+    if not patent.kind.startswith(('B', 'Y')):
+        return None
+    def field(label):
+        row = pane.locator('tr').filter(has=page.get_by_role('rowheader', name=label, exact=True))
+        return row.inner_text() if row.count() == 1 else ''
+    mapping = publication_mapping(patent, field('출원번호(일자)'), field('공개번호(일자)'))
+    if mapping is None:
+        return None
+    publication, application = mapping
+    notice = (f'Requested original: {patent.key}. Official English abstract source: '
+              f'{publication.key} (laid-open publication of the same application '
+              f'{application}). The original document attached is {patent.key}.')
+    stage = work / 'publication-kpa'
+    stage.mkdir(exist_ok=True)
+    child = page.context.new_page()
+    try:
+        found = collect(child, publication, stage, args, bibliography_only=True,
+                        expected_application=application, source_notice=notice)
+    finally:
+        child.close()
+    provenance = dict(requested_publication=patent.key,
+        abstract_publication=publication.key, application=application,
+        mapping_verified=found is not None, source_notice=notice,
+        status='found' if found is not None else 'no_exact_kpa')
+    if found is not None:
+        provenance['biblio_url'] = found['biblio_url']
+    (work / 'publication-abstract-mapping.json').write_text(
+        json.dumps(provenance, ensure_ascii=False, indent=2), encoding='utf-8')
+    return dict(**found, provenance=provenance) if found is not None else None
+
+
 def collect_domestic_for_translation(page, patent, work, args):
     """KPA absence is not domestic absence. Stage evidence for agent translation."""
     import json
@@ -320,6 +406,7 @@ def collect_domestic_for_translation(page, patent, work, args):
     field.wait_for(state='visible')
     if not domestic_number_matches(field.inner_text(), number, patent.kind):
         raise CollectionError('국내 번역 보완 후보의 공보번호 불일치')
+    publication_biblio = collect_publication_bibliography(page, patent, pane, work, args)
     abstract = pane.locator('#sum_all')
     source_text = abstract.inner_text() if abstract.count() else ''
     source_text = re.sub(r'^\s*요약\s*', '', source_text).strip()
@@ -327,6 +414,14 @@ def collect_domestic_for_translation(page, patent, work, args):
     (work/'domestic-bibliography.html').write_text(pane.inner_html(), encoding='utf-8')
     biblio_url = page.url
     parts = download_domestic_pane(page, patent, number, None, biblio_url, work)
+    if publication_biblio is not None:
+        from dataclasses import replace
+        provenance = publication_biblio['provenance']
+        return replace(parts, biblio=publication_biblio['biblio'],
+            biblio_url=publication_biblio['biblio_url'],
+            verification=(parts.verification + '; ' + provenance['source_notice'] +
+                '; KIPRIS 국내 등록·공개·출원번호 및 KPA 출원번호 대조; 최종 시각 검수 필요'),
+            biblio_provenance=provenance)
     (work/'original-viewer.html').write_text(pane.inner_html(), encoding='utf-8')
     cover = official_cover_text(parts.original)
     (work/'original-cover.txt').write_text(cover, encoding='utf-8')
