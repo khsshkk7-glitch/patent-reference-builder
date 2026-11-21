@@ -7,6 +7,7 @@ import json
 from .browser_session import navigate, checkpoint, CollectionError, assert_official_url
 from .collector_common import Collected, print_biblio, english_abstract
 from .input_parser import extract, resolve, one, korean_national_number, korean_display_number, korean_right
+from .original_identity import check_korean_cover, check_korean_pdf_cover, official_cover_text, DocumentIdentityMismatch
 from .pdf_merger import inspect_pdf
 
 
@@ -61,6 +62,7 @@ def collect_configured(page, patent, work, args):
     reader = inspect_pdf(original)
     if len(reader.pages) != count:
         raise CollectionError("원문 총 페이지 수 불일치")
+    check_korean_pdf_cover(publication, original)
     resolve(publication, extract(reader.pages[0].extract_text() or "", country="KR"))
     return Collected(publication, biblio, original, count, "KIPRIS", biblio_url, original_url,
                      "KPA 공보번호·원문 표지·사이트 전체 페이지 수 대조; 최종 시각 검수 필요")
@@ -74,22 +76,6 @@ def domestic_number_matches(text, number, kind):
     # KIPRIS domestic registration numbers append a four-digit serial suffix.
     suffix = r'(?:0000)?' if kind.startswith(('B', 'Y')) else ''
     return bool(re.search(r'(?<!\d)' + re.escape(number) + suffix + r'(?!\d)', text))
-
-
-def official_cover_text(path):
-    # Older KIPRIS originals use KSCms-UHC-H, unsupported by pypdf extraction.
-    # PDFium reads the original bytes; it does not alter or translate the PDF.
-    import pypdfium2
-    with pypdfium2.PdfDocument(path) as document:
-        page = document[0]
-        try:
-            textpage = page.get_textpage()
-            try:
-                return textpage.get_text_range()
-            finally:
-                textpage.close()
-        finally:
-            page.close()
 
 
 def kpa_evidence(work, patent, reason, candidates, **details):
@@ -256,6 +242,8 @@ def collect_domestic(page, publication, application_number, number, biblio, bibl
 
 
 def download_domestic_pane(page, publication, number, biblio, biblio_url, work):
+    if number != national_number(publication):
+        raise DocumentIdentityMismatch('국내 뷰어의 조회 번호와 확정 공보번호가 일치하지 않습니다.')
     pane = page.locator('#mainResultDetail')
     registered = publication.kind.startswith(('B', 'Y'))
     label = '등록번호(일자)' if registered else '공개번호(일자)'
@@ -302,11 +290,12 @@ def download_domestic_pane(page, publication, number, biblio, biblio_url, work):
     cover = official_cover_text(original)
     compact = re.sub(r'\s+', '', cover)
     display_number = korean_display_number(publication)
+    check_korean_cover(publication, cover, require_readable_field=True)
     if cover.strip() and display_number not in compact and number not in compact:
-        raise CollectionError('원문 표지 번호가 요청한 공보와 일치하지 않습니다.')
+        raise DocumentIdentityMismatch('원문 표지 번호가 요청한 공보와 일치하지 않습니다.')
     kinds = re.findall(r'공보\s*\(\s*([ABUY]\d*)\s*\)', cover)
     if kinds and publication.kind not in kinds:
-        raise CollectionError('원문 표지의 공개/등록 종류 코드가 요청과 일치하지 않습니다.')
+        raise DocumentIdentityMismatch('원문 표지의 공개/등록 종류 코드가 요청과 일치하지 않습니다.')
     return Collected(publication, biblio, original, count, 'KIPRIS', biblio_url, page.url,
         'KPA 공고번호·출원번호로 국내 공보 연결, 전문 뷰어 전체 페이지 수 대조; 최종 시각 검수 필요')
 
@@ -475,7 +464,8 @@ def choose_domestic_record(page, patent, number, work):
             matches.append(index)
     (work/'domestic-candidates.json').write_text(json.dumps(candidates, ensure_ascii=False, indent=2), encoding='utf-8')
     if len(matches) != 1:
-        raise CollectionError('국내 정확 공보 후보 '+str(len(matches))+'건: 번호·종별을 확정할 수 없습니다. domestic-candidates.json을 검토하세요.')
+        raise CollectionError('국내 정확 공보 후보 '+str(len(matches))+'건: 번호·종별을 확정할 수 없습니다. '
+                              '원문의 (11) 공개·등록번호와 (21) 출원번호를 구분하고 domestic-candidates.json을 검토하세요.')
     if matches[0] != articles.count()-1:
         articles.nth(matches[0]).get_by_role('button', name=re.compile(r'^\[\d+\]')).click()
         page.wait_for_load_state('networkidle')

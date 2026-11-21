@@ -172,6 +172,8 @@ def from_manifest(requested, entry, base):
     count = entry["original_pages"]
     if type(count) is not int or len(orig.pages) != count:
         raise CollectionError("검토된 원문 총 페이지 수 불일치")
+    from .original_identity import check_korean_pdf_cover
+    check_korean_pdf_cover(publication, o)
     provenance = entry.get('biblio_provenance')
     if provenance is not None:
         from .input_parser import one, korean_right

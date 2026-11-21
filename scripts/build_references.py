@@ -14,7 +14,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "scripts"
 
-from .input_parser import extract, one
+from .input_parser import conflicting_korean_prefixes, extract, one, resolve
 from .excel_reporter import Row, read_table, write_report
 from .pdf_merger import merge_unique, copy_original_unique, sha256
 from .output_paths import output_directory
@@ -68,7 +68,7 @@ def input_rows(args):
     role = args.role or 'publication'
     for chunk in chunks:
         patents = extract(chunk, role, args.country)
-        if len(patents) > 1:
+        if len(patents) > 1 and not next(conflicting_korean_prefixes(chunk, args.country), None):
             base = len(rows) + 2
             rows.extend(Row("입력", base + i, p.input_text, role, role_source='explicit' if args.role else 'default') for i, p in enumerate(patents))
         else:
@@ -230,6 +230,8 @@ def run(args):
                         parts = (espacenet_collector.collect_original_only(page, patent, work, args)
                             if args.original_only else collect(page, patent, work, args))
                         time.sleep(args.delay)
+                    if patent.role == 'publication':
+                        resolve(patent, [parts.publication])
                     filename = parts.publication.filename
                     resolved_key = parts.publication.cache_key
                     if resolved_key in cache:

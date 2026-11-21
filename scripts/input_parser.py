@@ -93,6 +93,18 @@ def clean(text):
     return text
 
 
+def conflicting_korean_prefixes(text, country=None):
+    value = clean(text)
+    if country and country.upper() == 'KR' and not re.search(rf'\b(?:{COUNTRY_PATTERN})\s*\d', value):
+        value = 'KR ' + value
+    for match in PATTERN.finditer(value):
+        number = re.sub(r'\D', '', match['num'])
+        kind = match['kind'] or ''
+        if match['cc'] == 'KR' and len(number) in (9, 13) and number[:2] in ('10', '20'):
+            if kind_right(kind) and kind_right(kind) != number[:2]:
+                yield number[:2], kind
+
+
 def extract(text, role="publication", country=None):
     value = clean(text)
     if country and country.upper() not in COUNTRIES:
@@ -133,6 +145,11 @@ def extract(text, role="publication", country=None):
 
 
 def one(text, **kwargs):
+    conflict = next(conflicting_korean_prefixes(text, kwargs.get('country')), None)
+    if conflict:
+        prefix, kind = conflict
+        raise ValueError(f'한국 번호의 권리 접두부 {prefix}과(와) 종별 {kind}가 충돌합니다. '
+                         '특허는 10과 A/B, 실용신안은 20과 U/Y를 확인하세요: ' + str(text))
     matches = extract(text, **kwargs)
     if len(matches) != 1:
         raise ValueError("특허번호가 없거나 여러 개입니다. 국가코드와 번호를 확인하세요: " + str(text))
@@ -148,5 +165,8 @@ def resolve(requested, candidates):
     if requested.role == "application":
         raise ValueError("출원번호는 공보번호로 먼저 매핑해야 합니다. 후보 공보를 확인하세요.")
     if len(exact) != 1:
+        if not exact and requested.country == 'KR':
+            raise ValueError('요청한 한국 공보번호·권리 유형·종별과 일치하는 후보가 없습니다: '
+                             + requested.input_text + '. 원문의 (11) 공개·등록번호와 (21) 출원번호를 구분해 확인하세요.')
         raise ValueError("문헌 종별을 단일하게 확인할 수 없습니다: " + ", ".join(p.key for p in exact))
     return exact[0]

@@ -67,6 +67,8 @@ def validate_packet(requested, entry, base):
     count = entry['original_pages']
     if type(count) is not int or len(reader.pages) != count or entry.get('viewer_pages') != count:
         raise CollectionError('AI 보완 원문·뷰어 전체 페이지 수 불일치')
+    from .original_identity import check_korean_pdf_cover
+    check_korean_pdf_cover(publication, path)
     pages = entry.get('source_pages', [])
     if not pages or any(type(n) is not int or not 1 <= n <= count for n in pages):
         raise CollectionError('AI 번역/요약의 근거 페이지가 필요합니다.')

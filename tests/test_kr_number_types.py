@@ -8,14 +8,50 @@ import unittest
 from unittest.mock import patch
 
 from scripts.build_references import parser, run, input_rows
+from scripts.browser_session import CollectionError
 from scripts.collector_common import Collected
 from scripts.input_parser import one, resolve, korean_display_number
 from scripts.kipris_collector import national_number
+from scripts.original_identity import check_korean_cover, DocumentIdentityMismatch
 from scripts.pdf_merger import sha256
 from tests.test_core import pdf
 
 
 class KoreanNumberTypes(unittest.TestCase):
+    def test_reported_input_preserves_ten_and_explains_twenty_a_conflict(self):
+        p = one('KR 10-2023-0061714 A')
+        self.assertEqual((p.query, national_number(p)), ('pn=KR20230061714A', '1020230061714'))
+        for text in ('KR 20-2023-0061714 A', '20-2023-0061714 A', 'KR2020230061714A'):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, '접두부 20.*종별 A'):
+                one(text, country='KR')
+
+    def test_korean_cover_uses_publication_field_not_application_field(self):
+        cover = '(12) 공개특허공보(A)\n(11) 공개번호\n(43) 공개일자\n10-2024-0164181\n2024년11월19일\n(21) 출원번호 10-2023-0061714'
+        self.assertTrue(check_korean_cover(one('KR 10-2024-0164181 A'), cover))
+        for wrong_cover in (cover, cover.replace('10-2024-0164181', '20-2023-0061714')):
+            with self.subTest(cover=wrong_cover), self.assertRaises(DocumentIdentityMismatch):
+                check_korean_cover(one('KR 10-2023-0061714 A'), wrong_cover)
+        unreadable = '(12) 공개특허공보(A)\n(11) 공개번호\n(21) 출원번호 10-2023-0061714'
+        requested = one('KR 10-2023-0061714 A')
+        self.assertFalse(check_korean_cover(requested, unreadable))
+        with self.assertRaisesRegex(CollectionError, '공보번호를 읽지 못했습니다'):
+            check_korean_cover(requested, unreadable, require_readable_field=True)
+
+    def test_wrong_right_from_collector_is_rejected_before_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wrong = Collected(one('KR 20-2023-0061714 U'), root/'b.pdf', root/'o.pdf', 1,
+                              'KIPRIS', '', '', 'Wrong-right fixture')
+            args = parser().parse_args(['--text','KR 10-2023-0061714 A','--out',tmp,'--delay','0'])
+            with patch('scripts.build_references.browser_session',return_value=nullcontext(object())), \
+                 patch('scripts.build_references.collect',return_value=wrong), \
+                 patch('scripts.build_references.merge_unique') as merge, redirect_stdout(io.StringIO()):
+                self.assertEqual(run(args),1)
+            merge.assert_not_called()
+            result = json.loads(next(root.glob('처리결과_*.json')).read_text(encoding='utf-8'))[0]
+            self.assertEqual(result['status'],'실패')
+            self.assertIn('(21) 출원번호',result['note'])
+
     def test_chat_splitting_retains_explicit_right_and_a_kind(self):
         args = parser().parse_args(['--text','KR 10-2007-0000036 KR 20-2007-0000036 KR 10-2020-0137353 A'])
         parsed = [one(r.value, role=r.role) for r in input_rows(args)[2]]
